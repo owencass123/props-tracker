@@ -240,8 +240,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <input type="date" id="f-date-to">
       </div>
       <div class="filter-group">
-        <label>EV% &ge; <span id="ev-label" class="range-val">0%</span></label>
-        <input type="range" id="f-ev" min="-30" max="30" step="1" value="0">
+        <label>EV% Min &ge; <span id="ev-min-label" class="range-val">-30%</span></label>
+        <input type="range" id="f-ev-min" min="-30" max="30" step="1" value="-30">
+      </div>
+      <div class="filter-group">
+        <label>EV% Max &le; <span id="ev-max-label" class="range-val">+30%</span></label>
+        <input type="range" id="f-ev-max" min="-30" max="30" step="1" value="30">
       </div>
       <div class="filter-group">
         <label>Movement</label>
@@ -347,10 +351,14 @@ const books = [...new Set(RAW.map(r=>r.book))].sort();
 const bookSel = document.getElementById('f-book');
 books.forEach(b=>{ const o=document.createElement('option'); o.value=b; o.textContent=b; bookSel.appendChild(o); });
 
-// ── EV range label ────────────────────────────────────────────────────────────
-const evSlider = document.getElementById('f-ev');
-const evLabel  = document.getElementById('ev-label');
-evSlider.addEventListener('input',()=>{ evLabel.textContent=(evSlider.value>=0?'+':'')+evSlider.value+'%'; refresh(); });
+// ── EV range labels ───────────────────────────────────────────────────────────
+const evMinSlider = document.getElementById('f-ev-min');
+const evMaxSlider = document.getElementById('f-ev-max');
+const evMinLabel  = document.getElementById('ev-min-label');
+const evMaxLabel  = document.getElementById('ev-max-label');
+function fmtEvLabel(v){ return (v>=0?'+':'')+v+'%'; }
+evMinSlider.addEventListener('input',()=>{ evMinLabel.textContent=fmtEvLabel(evMinSlider.value); refresh(); });
+evMaxSlider.addEventListener('input',()=>{ evMaxLabel.textContent=fmtEvLabel(evMaxSlider.value); refresh(); });
 
 // ── date range defaults ───────────────────────────────────────────────────────
 const dates = RAW.map(r=>r.date).filter(Boolean).sort();
@@ -363,7 +371,8 @@ if(dates.length){
 function getFiltered(){
   const side     = document.getElementById('f-side').value;
   const book     = document.getElementById('f-book').value;
-  const evMin    = parseFloat(evSlider.value);
+  const evMin    = parseFloat(evMinSlider.value);
+  const evMax    = parseFloat(evMaxSlider.value);
   const movF     = document.getElementById('f-mov').value;
   const resF     = document.getElementById('f-results').value;
   const dateFrom = document.getElementById('f-date-from').value;
@@ -372,7 +381,7 @@ function getFiltered(){
   return RAW.filter(r=>{
     if(side!=='both' && r.side!==side) return false;
     if(book!=='all' && r.book!==book) return false;
-    if(r.ev===null || r.ev<evMin) return false;
+    if(r.ev===null || r.ev<evMin || r.ev>evMax) return false;
     if(movF==='favor'  && r.movFavor!==true)  return false;
     if(movF==='against'&& r.movFavor!==false) return false;
     if(movF==='none'   && r.movement!==0 && r.movement!==null) return false;
@@ -403,12 +412,20 @@ function updateCards(rows){
 
 // ── EV% table ─────────────────────────────────────────────────────────────────
 function buildEvTable(base){
-  const thresholds = [0,5,10,15,20,25];
+  const posThresholds = [0,5,10,15,20,25];
+  const negThresholds = [-5,-10,-15,-20,-25];
   let html='<table><thead><tr><th>EV% Threshold</th><th>Bets (graded)</th><th>Wins</th><th>Losses</th><th>Win Rate</th></tr></thead><tbody>';
-  thresholds.forEach(t=>{
+  html+=`<tr><td colspan="5" style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding-top:10px">Positive EV (Overs/Unders priced favorably)</td></tr>`;
+  posThresholds.forEach(t=>{
     const rows = base.filter(r=>r.ev!==null&&r.ev>=t&&(r.result==='Win'||r.result==='Loss'));
     const {rate,wins,losses,n} = winRate(rows);
-    html+=`<tr><td>EV% &ge; ${t>=0?'+':''}${t}%</td><td>${n}</td><td class="win">${wins}</td><td class="loss">${losses}</td><td>${fmtPct(rate)}</td></tr>`;
+    html+=`<tr><td>EV% &ge; +${t}%</td><td>${n}</td><td class="win">${wins}</td><td class="loss">${losses}</td><td>${fmtPct(rate)}</td></tr>`;
+  });
+  html+=`<tr><td colspan="5" style="color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding-top:10px">Negative EV (Fading the book)</td></tr>`;
+  negThresholds.forEach(t=>{
+    const rows = base.filter(r=>r.ev!==null&&r.ev<=t&&(r.result==='Win'||r.result==='Loss'));
+    const {rate,wins,losses,n} = winRate(rows);
+    html+=`<tr><td>EV% &le; ${t}%</td><td>${n}</td><td class="win">${wins}</td><td class="loss">${losses}</td><td>${fmtPct(rate)}</td></tr>`;
   });
   html+='</tbody></table>';
   document.getElementById('ev-table').innerHTML=html;
@@ -517,6 +534,7 @@ function showTab(id){
 ['f-side','f-book','f-mov','f-results','f-date-from','f-date-to'].forEach(id=>{
   document.getElementById(id).addEventListener('change', refresh);
 });
+
 
 refresh();
 </script>
