@@ -1,11 +1,10 @@
 name: Scrape Props & Update Dashboard
 
 on:
-  # 10:00 AM CT = 15:00 UTC (CDT, Apr–Nov)
-  # 4:30 PM CT  = 21:30 UTC
+  # Every hour 11 AM–9 PM CT (CDT = UTC-5, Apr–Nov)
+  # 11 AM CT = 16 UTC ... 9 PM CT = 02 UTC next day
   schedule:
-    - cron: '0 15 * * *'
-    - cron: '30 21 * * *'
+    - cron: '0 16-23,0-2 * * *'
   workflow_dispatch:   # lets you trigger manually from GitHub any time
 
 permissions:
