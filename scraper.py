@@ -41,6 +41,8 @@ SPORTSBOOK_COL_IDS = {
     "Bookmaker":  "8",
     "Bovada":     "10",
     "BetRivers":  "17",
+    "Fanatics":   "86",
+    "Hard Rock":  "24",
 }
 
 DATA_FILE = Path("data/props.csv")

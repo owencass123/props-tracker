@@ -84,10 +84,18 @@ def build_records(df):
             last_odds  = float(odds_vals.iloc[-1]) if len(odds_vals) > 0 else None
             line_val   = float(line_vals.iloc[-1]) if len(line_vals)  > 0 else None
 
-            # movement
+            # movement — adjusted for the +/- discontinuity at even money
+            # e.g. +110 → -110 = 20 pts (not 220), because both are 10 pts from even
             movement = None
             if first_odds is not None and last_odds is not None:
-                movement = last_odds - first_odds
+                if first_odds > 0 and last_odds < 0:
+                    # crossed from + to - (odds shortened past even money)
+                    movement = -((first_odds - 100) + (abs(last_odds) - 100))
+                elif first_odds < 0 and last_odds > 0:
+                    # crossed from - to + (odds lengthened past even money)
+                    movement = (abs(first_odds) - 100) + (last_odds - 100)
+                else:
+                    movement = last_odds - first_odds
 
             def in_favor(fo, lo):
                 if fo is None or lo is None: return None
