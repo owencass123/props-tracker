@@ -56,9 +56,8 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git reset --soft origin/main
           git add data/ docs/
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "Auto-update $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git pull --rebase=merges origin main
           git push
