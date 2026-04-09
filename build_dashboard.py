@@ -240,12 +240,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <input type="date" id="f-date-to">
       </div>
       <div class="filter-group">
-        <label>EV% Min &ge; <span id="ev-min-label" class="range-val">-30%</span></label>
-        <input type="range" id="f-ev-min" min="-30" max="30" step="1" value="-30">
+        <label>EV% Min &ge; <span id="ev-min-label" class="range-val">-100%</span></label>
+        <input type="range" id="f-ev-min" min="-100" max="100" step="1" value="-100">
       </div>
       <div class="filter-group">
-        <label>EV% Max &le; <span id="ev-max-label" class="range-val">+30%</span></label>
-        <input type="range" id="f-ev-max" min="-30" max="30" step="1" value="30">
+        <label>EV% Max &le; <span id="ev-max-label" class="range-val">+100%</span></label>
+        <input type="range" id="f-ev-max" min="-100" max="100" step="1" value="100">
       </div>
       <div class="filter-group">
         <label>Movement</label>
@@ -412,8 +412,8 @@ function updateCards(rows){
 
 // ── EV% table ─────────────────────────────────────────────────────────────────
 function buildEvTable(base){
-  const posThresholds = [0,5,10,15,20,25];
-  const negThresholds = [-5,-10,-15,-20,-25];
+  const posThresholds = [0,5,10,15,20,25,30,40,50];
+  const negThresholds = [-5,-10,-15,-20,-25,-30,-40,-50];
   let html='<table><thead><tr><th>EV% Threshold</th><th>Bets (graded)</th><th>Wins</th><th>Losses</th><th>Win Rate</th></tr></thead><tbody>';
   html+=`<tr><td colspan="5" style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding-top:10px">Positive EV (Overs/Unders priced favorably)</td></tr>`;
   posThresholds.forEach(t=>{
