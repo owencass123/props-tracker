@@ -471,6 +471,9 @@ def process_row(driver, row_id, rows_out):
 
 def scroll_and_process_all_rows(driver, rows_out):
     seen = set()
+    finalized = load_finalized_keys()
+    print(f"ℹ️  Skipping {len(finalized)} already-finalized player+date combos")
+
     for attempt in range(60):
         rows = driver.find_elements(By.CSS_SELECTOR, ".ag-center-cols-container .ag-row")
         new_found = False
@@ -479,6 +482,14 @@ def scroll_and_process_all_rows(driver, rows_out):
             if not row_id or row_id in seen:
                 continue
             seen.add(row_id)
+
+            # Check if this player already has a finalized result on any date
+            player, matchup = extract_frozen_info(driver, row_id)
+            player_lower = player.strip().lower()
+            if any(k[0] == player_lower for k in finalized):
+                print(f"  ⏭️  {player} — already finalized, skipping")
+                continue
+
             new_found = True
             process_row(driver, row_id, rows_out)
 
@@ -494,6 +505,32 @@ def scroll_and_process_all_rows(driver, rows_out):
 
 
 # ── CSV save ──────────────────────────────────────────────────────────────────
+
+def load_finalized_keys():
+    """
+    Returns a set of (player_lower, date) tuples that already have a
+    final result (Win/Loss/Push) in the CSV. These should not be re-scraped.
+    """
+    finalized = set()
+    if not DATA_FILE.exists() or DATA_FILE.stat().st_size == 0:
+        return finalized
+    try:
+        import pandas as pd
+        df = pd.read_csv(DATA_FILE, dtype=str)
+        final_results = {"win", "loss", "push"}
+        for col in ("Over Result", "Under Result"):
+            if col not in df.columns:
+                continue
+            mask = df[col].str.strip().str.lower().isin(final_results)
+            for _, row in df[mask].iterrows():
+                player = str(row.get("Player", "")).strip().lower()
+                date   = str(row.get("Date", "")).strip()
+                if player and date:
+                    finalized.add((player, date))
+    except Exception as e:
+        print(f"⚠️  Could not load finalized keys: {e}")
+    return finalized
+
 
 def append_to_csv(rows):
     file_exists = DATA_FILE.exists() and DATA_FILE.stat().st_size > 0
