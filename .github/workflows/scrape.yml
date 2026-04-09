@@ -7,6 +7,10 @@ on:
     - cron: '0 16-23,0-2 * * *'
   workflow_dispatch:   # lets you trigger manually from GitHub any time
 
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -51,7 +55,10 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/ docs/
-          git diff --staged --quiet || \
-            git commit -m "Auto-update $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git pull --rebase origin main
-          git push
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Auto-update $(date -u '+%Y-%m-%d %H:%M UTC')"
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push && break
+            echo "Push attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
