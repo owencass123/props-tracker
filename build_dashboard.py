@@ -455,13 +455,17 @@ function buildMovTable(base){
 
 // ── combo table ───────────────────────────────────────────────────────────────
 function buildComboTable(base){
-  const evTs  = [0,5,10,15,20];
-  const movs  = [{label:'In Favor',fn:r=>r.movFavor===true},{label:'Against',fn:r=>r.movFavor===false},{label:'Any',fn:()=>true}];
-  let html='<div class="matrix-wrap"><table><thead><tr><th>EV% &ge;</th>';
+  const movs = [{label:'In Favor',fn:r=>r.movFavor===true},{label:'Against',fn:r=>r.movFavor===false},{label:'Any',fn:()=>true}];
+
+  // Positive EV section
+  const posTs = [0,5,10,15,20,25];
+  let html='<div class="matrix-wrap">';
+  html+=`<div style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Positive EV &ge; threshold</div>`;
+  html+='<table><thead><tr><th>EV% &ge;</th>';
   movs.forEach(m=>html+=`<th>Move: ${m.label}</th>`);
   html+='</tr></thead><tbody>';
-  evTs.forEach(t=>{
-    html+=`<tr><td><b>${t>=0?'+':''}${t}%</b></td>`;
+  posTs.forEach(t=>{
+    html+=`<tr><td><b>+${t}%</b></td>`;
     movs.forEach(({fn})=>{
       const rows=base.filter(r=>r.ev!==null&&r.ev>=t&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
       const {rate,n}=winRate(rows);
@@ -469,7 +473,25 @@ function buildComboTable(base){
     });
     html+='</tr>';
   });
+  html+='</tbody></table>';
+
+  // Negative EV section
+  const negTs = [-5,-10,-15,-20,-25];
+  html+=`<div style="color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 6px">Negative EV &le; threshold</div>`;
+  html+='<table><thead><tr><th>EV% &le;</th>';
+  movs.forEach(m=>html+=`<th>Move: ${m.label}</th>`);
+  html+='</tr></thead><tbody>';
+  negTs.forEach(t=>{
+    html+=`<tr><td><b>${t}%</b></td>`;
+    movs.forEach(({fn})=>{
+      const rows=base.filter(r=>r.ev!==null&&r.ev<=t&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
+      const {rate,n}=winRate(rows);
+      html+=`<td>${fmtPct(rate)} ${fmtN(n)}</td>`;
+    });
+    html+='</tr>';
+  });
   html+='</tbody></table></div>';
+
   document.getElementById('combo-table').innerHTML=html;
 }
 
