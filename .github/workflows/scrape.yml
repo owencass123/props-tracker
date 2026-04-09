@@ -56,11 +56,9 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git reset --soft origin/main
           git add data/ docs/
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "Auto-update $(date -u '+%Y-%m-%d %H:%M UTC')"
-          for i in 1 2 3 4 5; do
-            git pull --rebase origin main && git push && break
-            echo "Push attempt $i failed, retrying in 10s..."
-            sleep 10
-          done
+          git push
