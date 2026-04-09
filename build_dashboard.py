@@ -413,7 +413,7 @@ function updateCards(rows){
 // ── EV% table ─────────────────────────────────────────────────────────────────
 function buildEvTable(base){
   const posThresholds = [0,5,10,15,20,25,30,40,50];
-  const negThresholds = [-5,-10,-15,-20,-25,-30,-40,-50];
+  const negThresholds = [0,-5,-10,-15,-20,-25,-30,-40,-50];
   let html='<table><thead><tr><th>EV% Threshold</th><th>Bets (graded)</th><th>Wins</th><th>Losses</th><th>Win Rate</th></tr></thead><tbody>';
   html+=`<tr><td colspan="5" style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding-top:10px">Positive EV (Overs/Unders priced favorably)</td></tr>`;
   posThresholds.forEach(t=>{
@@ -476,7 +476,7 @@ function buildComboTable(base){
   html+='</tbody></table>';
 
   // Negative EV section
-  const negTs = [-5,-10,-15,-20,-25];
+  const negTs = [0,-5,-10,-15,-20,-25];
   html+=`<div style="color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 6px">Negative EV &le; threshold</div>`;
   html+='<table><thead><tr><th>EV% &le;</th>';
   movs.forEach(m=>html+=`<th>Move: ${m.label}</th>`);
