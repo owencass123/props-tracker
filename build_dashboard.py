@@ -59,6 +59,13 @@ def load_data():
 
 # ── aggregate per (Player, Date, Sportsbook, Side) ───────────────────────────
 
+def extract_game_time(matchup):
+    """Pull the game start time from matchup string (e.g. '7:05 PM') for sorting."""
+    if not matchup:
+        return ""
+    m = re.search(r'(\d{1,2}:\d{2}\s*[AP]M)', str(matchup), re.IGNORECASE)
+    return m.group(1).strip().upper() if m else ""
+
 def build_records(df):
     if df.empty:
         return []
@@ -135,6 +142,7 @@ def build_records(df):
                 "book":        str(book),
                 "side":        side,
                 "date":        date_str,
+                "gameTime":    extract_game_time(str(matchup)),
                 "ev":          ev_cur,
                 "firstOdds":   first_odds,
                 "lastOdds":    last_odds,
@@ -512,11 +520,28 @@ function buildBookTable(base){
 }
 
 // ── raw table ─────────────────────────────────────────────────────────────────
+function gameTimeTo24h(t){
+  if(!t) return '99:99';
+  const m=t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if(!m) return '99:99';
+  let h=parseInt(m[1]); const min=m[2]; const ap=m[3].toUpperCase();
+  if(ap==='PM'&&h!==12) h+=12;
+  if(ap==='AM'&&h===12) h=0;
+  return String(h).padStart(2,'0')+':'+min;
+}
 function buildRawTable(rows){
   const MAX=300;
+  // Sort: newest date first → game time ascending → player ascending
+  const sorted=[...rows].sort((a,b)=>{
+    const da=parseDate(a.date), db=parseDate(b.date);
+    if(da&&db){ const diff=db-da; if(diff!==0) return diff; }
+    const ta=gameTimeTo24h(a.gameTime), tb=gameTimeTo24h(b.gameTime);
+    if(ta!==tb) return ta<tb?-1:1;
+    return (a.player||'').localeCompare(b.player||'');
+  });
   const tbody=document.getElementById('raw-body');
   tbody.innerHTML='';
-  rows.slice(0,MAX).forEach(r=>{
+  sorted.slice(0,MAX).forEach(r=>{
     const tr=document.createElement('tr');
     const res=r.result==='Win'?'<span class="win">Win</span>':r.result==='Loss'?'<span class="loss">Loss</span>':r.result?'<span class="pending">'+r.result+'</span>':'<span class="n">Pending</span>';
     const mov=r.movement===null?'—':(r.movement>=0?'+':'')+r.movement+(r.movFavor===true?' ↑':r.movFavor===false?' ↓':'');
@@ -526,9 +551,9 @@ function buildRawTable(rows){
       `<td>${r.line!==null?r.line:'—'}</td><td>${r.actualKs!==null&&r.actualKs!==undefined?r.actualKs:'—'}</td><td>${res}</td>`;
     tbody.appendChild(tr);
   });
-  if(rows.length>MAX){
+  if(sorted.length>MAX){
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td colspan="11" style="text-align:center;color:var(--sub)">Showing ${MAX} of ${rows.length} rows — use filters to narrow</td>`;
+    tr.innerHTML=`<td colspan="11" style="text-align:center;color:var(--sub)">Showing ${MAX} of ${sorted.length} rows — use filters to narrow</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -568,10 +593,11 @@ refresh();
 
 def main():
     from datetime import datetime
+    from zoneinfo import ZoneInfo
     df = load_data()
     records = build_records(df)
 
-    updated = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    updated = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %H:%M CT")
     data_json = json.dumps(records, default=str)
 
     html = HTML_TEMPLATE.replace("__DATA__", data_json).replace("__UPDATED__", updated)
