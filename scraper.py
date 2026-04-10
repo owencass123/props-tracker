@@ -483,11 +483,11 @@ def scroll_and_process_all_rows(driver, rows_out):
                 continue
             seen.add(row_id)
 
-            # Check if this player already has a finalized result on any date
+            # Check if this player already has a finalized result for TODAY
             player, matchup = extract_frozen_info(driver, row_id)
             player_lower = player.strip().lower()
-            if any(k[0] == player_lower for k in finalized):
-                print(f"  ⏭️  {player} — already finalized, skipping")
+            if (player_lower, TODAY) in finalized:
+                print(f"  ⏭️  {player} — already finalized for {TODAY}, skipping")
                 continue
 
             new_found = True

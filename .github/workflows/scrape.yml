@@ -59,5 +59,11 @@ jobs:
           git add data/ docs/
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "Auto-update $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git pull --rebase=merges origin main
-          git push
+          for i in 1 2 3 4; do
+            git push && exit 0
+            echo "Push attempt $i failed, rebasing..."
+            git fetch origin
+            git rebase origin/main
+            sleep $((i * 3))
+          done
+          echo "All push attempts failed" && exit 1

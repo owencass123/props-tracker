@@ -66,20 +66,29 @@ def find_ks(date_ts, player_name):
         return None
     for offset in (-1, 0, 1):
         day = date_ts + pd.Timedelta(days=offset)
-        for gpk in get_game_pks(day):
+        pks = get_game_pks(day)
+        if not pks and offset == 0:
+            print(f"  ⚠️  No game PKs returned for {day.date()} (offset={offset})")
+        for gpk in pks:
             data = get_boxscore(gpk)
+            if not data:
+                print(f"  ⚠️  Empty boxscore for gamePk={gpk}")
+                continue
             for side in ("home", "away"):
                 players = data.get("teams", {}).get(side, {}).get("players", {}) or {}
                 for _, p in players.items():
                     full = clean_name((p.get("person") or {}).get("fullName", ""))
                     if full.lower() != player_clean.lower():
                         continue
-                    ks = ((p.get("stats") or {}).get("pitching") or {}).get("strikeOuts")
+                    pitching = ((p.get("stats") or {}).get("pitching") or {})
+                    ks = pitching.get("strikeOuts")
+                    print(f"  🔍  {full} in game {gpk} (offset={offset}): strikeOuts={ks}")
                     if ks is not None:
                         try:
                             return int(ks)
                         except Exception:
                             pass
+    print(f"  ❌  find_ks: no result for '{player_clean}' around {date_ts.date()}")
     return None
 
 # ── result logic ──────────────────────────────────────────────────────────────
@@ -106,7 +115,11 @@ def main():
         print("No data file yet — skipping results update.")
         return
 
-    df = pd.read_csv(DATA_FILE, dtype=str)
+    try:
+        df = pd.read_csv(DATA_FILE, dtype=str, on_bad_lines='warn')
+    except Exception as e:
+        print(f"❌ Failed to read {DATA_FILE}: {e}")
+        raise
 
     # Add result columns if missing
     for col in ("Actual Ks", "Over Result", "Under Result"):
