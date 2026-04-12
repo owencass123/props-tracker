@@ -103,13 +103,24 @@ def build_records(df):
             result_col = f"{side} Result"
 
             ev_vals   = grp[ev_col].dropna()
-            odds_vals = grp[odds_col].dropna()
             line_vals = grp[line_col].dropna()
 
-            ev_cur    = float(ev_vals.iloc[-1])  if len(ev_vals)   > 0 else None
-            first_odds = float(odds_vals.iloc[0]) if len(odds_vals) > 0 else None
+            # Closing line = the most recent non-null line value
+            line_val = float(line_vals.iloc[-1]) if len(line_vals) > 0 else None
+
+            # Only use rows that share the closing line for first/last odds.
+            # If the line changed (e.g. o6.5 → o5.5), earlier rows at the old
+            # line are irrelevant to the current market and skew movement.
+            if line_val is not None:
+                closing_line_str = line_vals.iloc[-1]  # original string e.g. "o5.5"
+                same_line_mask = grp[line_col] == closing_line_str
+                odds_vals = grp.loc[same_line_mask, odds_col].dropna()
+            else:
+                odds_vals = grp[odds_col].dropna()
+
+            ev_cur     = float(ev_vals.iloc[-1])   if len(ev_vals)   > 0 else None
+            first_odds = float(odds_vals.iloc[0])  if len(odds_vals) > 0 else None
             last_odds  = float(odds_vals.iloc[-1]) if len(odds_vals) > 0 else None
-            line_val   = float(line_vals.iloc[-1]) if len(line_vals)  > 0 else None
 
             # movement — adjusted for the +/- discontinuity at even money
             # e.g. +110 → -110 = 20 pts (not 220), because both are 10 pts from even
