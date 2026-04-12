@@ -457,7 +457,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- By Sportsbook -->
   <div id="tab-book" class="tab-panel section">
-    <h2>Win Rate by Sportsbook</h2>
+    <h2>Win Rate by Sportsbook — Movement Direction</h2>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:14px">
+      Each book's movement is its own opening → closing odds. Result is the consensus grade for that player/date/side.
+      Only bets where the consensus was graded (Win/Loss) and the book had data are included.
+    </p>
     <div id="book-table"></div>
   </div>
 
@@ -661,17 +665,92 @@ function buildComboTable(base){
 
 // ── book table ────────────────────────────────────────────────────────────────
 function buildBookTable(base){
-  const graded = base.filter(r=>r.result==='Win'||r.result==='Loss');
-  const bks = [...new Set(graded.map(r=>r.book))].sort();
-  let html='<table><thead><tr><th>Sportsbook</th><th>Bets</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Avg EV%</th></tr></thead><tbody>';
-  bks.forEach(b=>{
-    const rows=graded.filter(r=>r.book===b);
-    const {rate,wins,losses,n}=winRate(rows);
-    const evVals=rows.map(r=>r.ev).filter(v=>v!==null&&!isNaN(v));
-    const avgEv=evVals.length?evVals.reduce((a,c)=>a+c,0)/evVals.length:NaN;
-    html+=`<tr><td>${b}</td><td>${n}</td><td class="win">${wins}</td><td class="loss">${losses}</td><td>${fmtPct(rate)}</td><td>${isNaN(avgEv)?'—':(avgEv>=0?'+':'')+avgEv.toFixed(1)+'%'}</td></tr>`;
+  // Build a lookup: player|date|side → consensus result
+  const resultMap={};
+  base.forEach(r=>{
+    if(r.result==='Win'||r.result==='Loss')
+      resultMap[r.player+'|'+r.date+'|'+r.side]=r.result;
   });
-  html+='</tbody></table>';
+
+  // Apply date/side filters from global controls to BOOK_RECORDS
+  const side     = document.getElementById('f-side').value;
+  const dateFrom = document.getElementById('f-date-from').value;
+  const dateTo   = document.getElementById('f-date-to').value;
+
+  // Enrich book records with consensus result
+  const enriched = BOOK_RECORDS.map(r=>{
+    const result = resultMap[r.player+'|'+r.date+'|'+r.side] || null;
+    return {...r, result};
+  }).filter(r=>{
+    if(r.result!=='Win'&&r.result!=='Loss') return false;  // only graded
+    if(side!=='both'&&r.side!==side) return false;
+    if(dateFrom){ const d=parseDate(r.date); if(!d||d<new Date(dateFrom)) return false; }
+    if(dateTo){   const d=parseDate(r.date); if(!d||d>new Date(dateTo+'T23:59:59')) return false; }
+    return true;
+  });
+
+  // Group by book
+  const bks=[...new Set(enriched.map(r=>r.book))].sort();
+
+  const thStyle='padding:8px 12px;text-align:center;';
+  const tdStyle='padding:7px 12px;text-align:center;';
+
+  let html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;">';
+  html+=`<thead><tr>
+    <th style="padding:8px 12px;text-align:left;">Sportsbook</th>
+    <th style="${thStyle}">Moved In Favor</th><th style="${thStyle}">W</th><th style="${thStyle}">L</th><th style="${thStyle}">Win Rate</th>
+    <th style="padding:8px 4px;color:var(--border)">|</th>
+    <th style="${thStyle}">Moved Against</th><th style="${thStyle}">W</th><th style="${thStyle}">L</th><th style="${thStyle}">Win Rate</th>
+    <th style="padding:8px 4px;color:var(--border)">|</th>
+    <th style="${thStyle}">No Movement</th><th style="${thStyle}">W</th><th style="${thStyle}">L</th><th style="${thStyle}">Win Rate</th>
+  </tr></thead><tbody>`;
+
+  bks.forEach(b=>{
+    const rows=enriched.filter(r=>r.book===b);
+
+    const favor  = rows.filter(r=>r.movFavor===true);
+    const against= rows.filter(r=>r.movFavor===false);
+    const none   = rows.filter(r=>r.movement===0||r.movement===null);
+
+    function stats(arr){
+      const w=arr.filter(r=>r.result==='Win').length;
+      const l=arr.filter(r=>r.result==='Loss').length;
+      const n=w+l;
+      const rate=n>0?w/n*100:NaN;
+      return {w,l,n,rate};
+    }
+
+    function cells(arr){
+      const {w,l,n,rate}=stats(arr);
+      const rateHtml=n>0?fmtPct(rate):`<span class="n">—</span>`;
+      return `<td style="${tdStyle}">${n}</td><td style="${tdStyle}" class="win">${w}</td><td style="${tdStyle}" class="loss">${l}</td><td style="${tdStyle}">${rateHtml}</td>`;
+    }
+
+    const sep=`<td style="padding:0 4px;color:var(--border);text-align:center">|</td>`;
+    html+=`<tr>
+      <td style="padding:7px 12px;font-weight:600">${b}</td>
+      ${cells(favor)}${sep}${cells(against)}${sep}${cells(none)}
+    </tr>`;
+  });
+
+  // Totals row
+  const favor  = enriched.filter(r=>r.movFavor===true);
+  const against= enriched.filter(r=>r.movFavor===false);
+  const none   = enriched.filter(r=>r.movement===0||r.movement===null);
+  function totCells(arr){
+    const w=arr.filter(r=>r.result==='Win').length;
+    const l=arr.filter(r=>r.result==='Loss').length;
+    const n=w+l;
+    const rate=n>0?w/n*100:NaN;
+    return `<td style="${tdStyle};font-weight:600">${n}</td><td style="${tdStyle}" class="win">${w}</td><td style="${tdStyle}" class="loss">${l}</td><td style="${tdStyle}">${n>0?fmtPct(rate):'—'}</td>`;
+  }
+  const sep=`<td style="padding:0 4px;color:var(--border);text-align:center">|</td>`;
+  html+=`<tr style="border-top:2px solid var(--border)">
+    <td style="padding:7px 12px;font-weight:700;color:var(--sub);font-size:11px;text-transform:uppercase">All Books</td>
+    ${totCells(favor)}${sep}${totCells(against)}${sep}${totCells(none)}
+  </tr>`;
+
+  html+='</tbody></table></div>';
   document.getElementById('book-table').innerHTML=html;
 }
 
