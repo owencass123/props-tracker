@@ -237,7 +237,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .matrix-wrap{overflow-x:auto;}
   .combo-label{font-size:12px;color:var(--sub);}
   .pending{color:var(--sub);font-style:italic;}
-  @media(max-width:600px){.cards{grid-template-columns:1fr 1fr;}.filters{flex-direction:column;}}
+  /* ── Player Summary tab ── */
+  .pc{background:#1e2130;border:1px solid var(--border);border-radius:8px;margin-bottom:14px;overflow:hidden;}
+  .pc-hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#252836;border-bottom:1px solid var(--border);}
+  .pc-name{font-weight:700;font-size:14px;color:#fff;}
+  .pc-date{font-size:12px;color:var(--sub);}
+  .pc-line-block{border-bottom:1px solid var(--border);padding:10px 16px;}
+  .pc-line-block:last-child{border-bottom:none;}
+  .pc-line-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--sub);margin-bottom:8px;}
+  .pc-side-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:6px 0;}
+  .pc-side-row+.pc-side-row{border-top:1px solid #252836;}
+  .side-pill{border-radius:4px;padding:2px 10px;font-size:11px;font-weight:700;min-width:52px;text-align:center;}
+  .side-pill.over{background:rgba(74,222,128,.15);color:var(--accent);}
+  .side-pill.under{background:rgba(96,165,250,.15);color:var(--accent2);}
+  .pc-stat{font-size:13px;color:var(--sub);white-space:nowrap;}
+  .pc-stat b{color:var(--text);}
+  .pc-stat-sep{color:#3a3d4a;font-size:12px;}
+  .expand-btn{margin-top:6px;padding:4px 10px;font-size:11px;color:var(--accent2);background:none;border:1px solid #2a3a4a;border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;}
+  .expand-btn:hover{background:#1e2a3a;color:#fff;}
+  .book-grid{display:none;margin-top:8px;border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+  .book-grid.open{display:block;}
+  .book-grid table{width:100%;border-collapse:collapse;font-size:12px;}
+  .book-grid th{background:#1a1d27;color:var(--sub);text-align:left;padding:5px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);}
+  .book-grid td{padding:5px 10px;border-bottom:1px solid #1a1d27;}
+  .book-grid tr:last-child td{border-bottom:none;}
+  .book-grid tr:hover td{background:#252836;}
+  @media(max-width:600px){.cards{grid-template-columns:1fr 1fr;}.filters{flex-direction:column;}.pc-side-row{gap:6px;}}
 </style>
 </head>
 <body>
@@ -318,6 +343,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="tab" onclick="showTab('mov')">Line Movement</button>
     <button class="tab" onclick="showTab('combo')">Combined</button>
     <button class="tab" onclick="showTab('book')">By Sportsbook</button>
+    <button class="tab" onclick="showTab('player')">By Player</button>
     <button class="tab" onclick="showTab('raw')">Raw Data</button>
   </div>
 
@@ -343,6 +369,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div id="tab-book" class="tab-panel section">
     <h2>Win Rate by Sportsbook</h2>
     <div id="book-table"></div>
+  </div>
+
+  <!-- By Player -->
+  <div id="tab-player" class="tab-panel section">
+    <h2>By Player</h2>
+    <div id="player-content"></div>
   </div>
 
   <!-- Raw Data -->
@@ -589,7 +621,135 @@ function buildRawTable(rows){
   }
 }
 
+// ── player summary ────────────────────────────────────────────────────────────
+function avgArr(arr){
+  const v=arr.filter(x=>x!==null&&x!==undefined&&!isNaN(x));
+  return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null;
+}
+function fmtAvgOdds(v){
+  if(v===null||isNaN(v)) return '—';
+  const r=Math.round(v); return r>0?'+'+r:String(r);
+}
+function fmtAvgMov(v){
+  if(v===null||isNaN(v)) return '—';
+  const r=Math.round(v*10)/10; return (r>=0?'+':'')+r;
+}
+function fmtAvgEv(v){
+  if(v===null||isNaN(v)) return '—';
+  return (v>=0?'+':'')+v.toFixed(1)+'%';
+}
+
+function buildPlayerTable(base){
+  // Group: player → date → lineKey → side → [records]
+  // lineKey is the numeric line value as a string (e.g. "5.5") or "__" for null
+  const map={};
+  base.forEach(r=>{
+    const p=r.player, d=r.date, lk=r.line!==null&&r.line!==undefined?String(r.line):'__';
+    if(!map[p]) map[p]={};
+    if(!map[p][d]) map[p][d]={};
+    if(!map[p][d][lk]) map[p][d][lk]={Over:[],Under:[]};
+    if(r.side==='Over'||r.side==='Under') map[p][d][lk][r.side].push(r);
+  });
+
+  let html='';
+  // Sort players alphabetically (strip position tag for display)
+  Object.keys(map).sort().forEach(player=>{
+    // Sort dates newest first
+    const sortedDates=Object.keys(map[player]).sort((a,b)=>{
+      const da=parseDate(a),db=parseDate(b); return db-da;
+    });
+    sortedDates.forEach(date=>{
+      const lineMap=map[player][date];
+      // Sort lines numerically
+      const lines=Object.keys(lineMap).filter(l=>l!=='__').sort((a,b)=>parseFloat(a)-parseFloat(b));
+      if(lineMap['__']) lines.push('__');
+      if(!lines.length) return;
+
+      const displayName=player.replace(/\\s*\\([^)]*\\)/g,'').trim();
+      html+=`<div class="pc">`;
+      html+=`<div class="pc-hdr"><span class="pc-name">${displayName}</span><span class="pc-date">${date}</span></div>`;
+
+      lines.forEach(lk=>{
+        const lineDisplay=lk==='__'?'—':lk;
+        html+=`<div class="pc-line-block">`;
+        if(lines.length>1) html+=`<div class="pc-line-label">Line: ${lineDisplay}</div>`;
+
+        ['Over','Under'].forEach(side=>{
+          const recs=lineMap[lk][side];
+          if(!recs.length) return;
+
+          const aEv  = avgArr(recs.map(r=>r.ev));
+          const aOpen= avgArr(recs.map(r=>r.firstOdds));
+          const aClose=avgArr(recs.map(r=>r.lastOdds));
+          const aMov = avgArr(recs.map(r=>r.movement));
+
+          // unique id for toggle
+          const uid=('pd_'+player+'_'+date+'_'+lk+'_'+side).replace(/[^a-zA-Z0-9]/g,'_');
+
+          html+=`<div class="pc-side-row">`;
+          html+=`<span class="side-pill ${side.toLowerCase()}">${side}</span>`;
+          html+=`<span class="pc-stat">EV: <b>${fmtAvgEv(aEv)}</b></span>`;
+          html+=`<span class="pc-stat-sep">|</span>`;
+          html+=`<span class="pc-stat">Open: <b>${fmtAvgOdds(aOpen)}</b></span>`;
+          html+=`<span class="pc-stat-sep">|</span>`;
+          html+=`<span class="pc-stat">Close: <b>${fmtAvgOdds(aClose)}</b></span>`;
+          html+=`<span class="pc-stat-sep">|</span>`;
+          html+=`<span class="pc-stat">Move: <b>${fmtAvgMov(aMov)}</b></span>`;
+          html+=`<span class="pc-stat" style="margin-left:auto;color:var(--sub);font-size:11px">${recs.length} book${recs.length!==1?'s':''}</span>`;
+          html+=`</div>`;
+
+          // collapsible book breakdown
+          html+=`<button class="expand-btn" onclick="togglePD('${uid}')"><span id="${uid}_arrow">▶</span> Book Details</button>`;
+          html+=`<div class="book-grid" id="${uid}">`;
+          html+=`<table><thead><tr><th>Book</th><th>EV%</th><th>Open</th><th>Close</th><th>Move</th></tr></thead><tbody>`;
+          [...recs].sort((a,b)=>(a.book||'').localeCompare(b.book||'')).forEach(r=>{
+            const mov=r.movement!==null?(r.movement>=0?'+':'')+r.movement:'—';
+            const evStr=r.ev!==null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—';
+            html+=`<tr><td>${r.book}</td><td>${evStr}</td><td>${fmtOdds(r.firstOdds)}</td><td>${fmtOdds(r.lastOdds)}</td><td>${mov}</td></tr>`;
+          });
+          html+=`</tbody></table></div>`;
+        });
+        html+=`</div>`; // pc-line-block
+      });
+      html+=`</div>`; // pc
+    });
+  });
+
+  if(!html) html='<p style="color:var(--sub);text-align:center;padding:20px">No data matches current filters.</p>';
+  document.getElementById('player-content').innerHTML=html;
+}
+
+function togglePD(uid){
+  const el=document.getElementById(uid);
+  const arrow=document.getElementById(uid+'_arrow');
+  const open=el.classList.toggle('open');
+  if(arrow) arrow.textContent=open?'▼':'▶';
+}
+
 // ── main refresh ──────────────────────────────────────────────────────────────
+function getFilteredAllResults(){
+  // Same as getFiltered() but ignores the results filter — used for By Player
+  // so today's ungraded props still appear
+  const side     = document.getElementById('f-side').value;
+  const book     = document.getElementById('f-book').value;
+  const evMin    = parseFloat(evMinSlider.value);
+  const evMax    = parseFloat(evMaxSlider.value);
+  const movF     = document.getElementById('f-mov').value;
+  const dateFrom = document.getElementById('f-date-from').value;
+  const dateTo   = document.getElementById('f-date-to').value;
+  return RAW.filter(r=>{
+    if(side!=='both' && r.side!==side) return false;
+    if(book!=='all' && r.book!==book) return false;
+    if(r.ev===null || r.ev<evMin || r.ev>evMax) return false;
+    if(movF==='favor'  && r.movFavor!==true)  return false;
+    if(movF==='against'&& r.movFavor!==false) return false;
+    if(movF==='none'   && r.movement!==0 && r.movement!==null) return false;
+    if(dateFrom){ const d=parseDate(r.date); if(!d||d<new Date(dateFrom)) return false; }
+    if(dateTo){   const d=parseDate(r.date); if(!d||d>new Date(dateTo+'T23:59:59')) return false; }
+    return true;
+  });
+}
+
 function refresh(){
   const filtered=getFiltered();
   updateCards(filtered);
@@ -597,6 +757,7 @@ function refresh(){
   buildMovTable(filtered);
   buildComboTable(filtered);
   buildBookTable(filtered);
+  buildPlayerTable(getFilteredAllResults());
   buildRawTable(filtered);
 }
 
