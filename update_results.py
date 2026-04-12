@@ -36,12 +36,21 @@ _boxscore_cache = {}
 
 # ── name helpers ──────────────────────────────────────────────────────────────
 
+PITCHER_POSITIONS = {"P", "SP", "RP"}
+
 def clean_name(name):
     if not isinstance(name, str):
         return ""
     name = re.sub(r"\s*\(.*?\)", "", name)
     name = re.sub(r"\s+", " ", name).strip()
     return ''.join(c for c in unicodedata.normalize('NFKD', name) if not unicodedata.combining(c))
+
+def extract_position(name):
+    """Return the position tag from a name like 'Aaron Nola(P)' → 'P'."""
+    if not isinstance(name, str):
+        return None
+    m = re.search(r"\(([^)]+)\)", name)
+    return m.group(1).strip().upper() if m else None
 
 # ── MLB API ───────────────────────────────────────────────────────────────────
 
@@ -84,10 +93,15 @@ def find_ks(date_str, player_name):
     date_str: 'MM/DD/YYYY'
     Returns int strikeout count or None.
     Searches date ±1 day to handle late-night games.
+    For pitchers (P/SP/RP): uses stats.pitching.strikeOuts
+    For batters (OF/IF/C/DH/etc.): uses stats.batting.strikeOuts
     """
     player_clean = clean_name(player_name)
     if not player_clean:
         return None
+
+    position = extract_position(player_name)
+    is_pitcher = position in PITCHER_POSITIONS if position else None  # None = unknown
 
     # Build list of dates to search: day-1, day, day+1
     from datetime import datetime
@@ -115,34 +129,51 @@ def find_ks(date_str, player_name):
                     full = clean_name(person.get("fullName", ""))
                     if full.lower() != player_clean.lower():
                         continue
-                    pitching = ((p.get("stats") or {}).get("pitching") or {})
-                    ks = pitching.get("strikeOuts")
-                    print(f"  🔍  {full} in game {gpk} ({search_date}): strikeOuts={ks}")
+                    stats = p.get("stats") or {}
+                    # Determine which stat block to use
+                    if is_pitcher is True:
+                        ks = (stats.get("pitching") or {}).get("strikeOuts")
+                    elif is_pitcher is False:
+                        ks = (stats.get("batting") or {}).get("strikeOuts")
+                    else:
+                        # Unknown position: prefer pitching, fall back to batting
+                        ks = (stats.get("pitching") or {}).get("strikeOuts")
+                        if ks is None:
+                            ks = (stats.get("batting") or {}).get("strikeOuts")
+                    print(f"  🔍  {full} [{position}] in game {gpk} ({search_date}): strikeOuts={ks}")
                     if ks is not None:
                         try:
                             return int(ks)
                         except Exception:
                             pass
 
-    print(f"  ❌  find_ks: no result for '{player_clean}' around {date_str}")
+    print(f"  ❌  find_ks: no result for '{player_clean}' [{position}] around {date_str}")
     return None
 
 # ── startup self-test ─────────────────────────────────────────────────────────
 
 def run_self_test():
     """
-    Validates that the API pipeline works end-to-end.
-    Uses a known completed game: Michael King, 04/08/2026, expected 4 Ks.
+    Validates the API pipeline for both pitchers and batters.
+    Michael King(P): 04/08/2026, expected 4 Ks (pitching)
+    Shohei Ohtani(DH): 04/08/2026, check batting strikeouts
     """
-    print("── Self-test: Michael King, 04/08/2026 ──")
-    result = find_ks("04/08/2026", "Michael King")
+    print("── Self-test ──────────────────────────────")
+    # Pitcher test
+    result = find_ks("04/08/2026", "Michael King(P)")
     if result == 4:
-        print(f"✅ Self-test PASSED: Michael King = {result} Ks")
+        print(f"✅ Pitcher test PASSED: Michael King = {result} Ks")
     elif result is not None:
-        print(f"⚠️  Self-test WARNING: expected 4, got {result}")
+        print(f"⚠️  Pitcher test WARNING: expected 4, got {result}")
     else:
-        print("❌ Self-test FAILED: got None — API or name-matching issue detected")
-    print("────────────────────────────────────────")
+        print("❌ Pitcher test FAILED: got None")
+    # Batter test (Shohei Ohtani batted on 4/8)
+    result2 = find_ks("04/08/2026", "Shohei Ohtani(DH)")
+    if result2 is not None:
+        print(f"✅ Batter test PASSED: Shohei Ohtani = {result2} batting Ks")
+    else:
+        print("❌ Batter test FAILED: got None for Shohei Ohtani batting Ks")
+    print("────────────────────────────────────────────")
 
 # ── result logic ──────────────────────────────────────────────────────────────
 
