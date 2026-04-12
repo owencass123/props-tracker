@@ -66,6 +66,20 @@ def extract_game_time(matchup):
     m = re.search(r'(\d{1,2}:\d{2}\s*[AP]M)', str(matchup), re.IGNORECASE)
     return m.group(1).strip().upper() if m else ""
 
+def time_to_minutes(t):
+    """Convert '08:55 AM' / '01:40 PM' to total minutes since midnight for sorting."""
+    if not isinstance(t, str) or not t.strip():
+        return 9999
+    m = re.match(r'(\d{1,2}):(\d{2})\s*(AM|PM)', t.strip(), re.IGNORECASE)
+    if not m:
+        return 9999
+    h, mn, ap = int(m.group(1)), int(m.group(2)), m.group(3).upper()
+    if ap == 'PM' and h != 12:
+        h += 12
+    elif ap == 'AM' and h == 12:
+        h = 0
+    return h * 60 + mn
+
 def build_records(df):
     if df.empty:
         return []
@@ -74,7 +88,13 @@ def build_records(df):
     group_cols = ["Player", "Matchup", "Sportsbook", "Date"]
 
     for (player, matchup, book, date_val), grp in df.groupby(group_cols, dropna=False):
-        grp = grp.sort_values("Time", na_position="last")
+        # Deduplicate rows with the same Time value — each scraper run re-appends
+        # the full odds history, so identical (Time, Over Odds, Under Odds) rows
+        # accumulate across scrape sessions.
+        grp = grp.drop_duplicates(subset=["Time", "Over Odds", "Under Odds"])
+        # Sort by proper 24h time (string sort breaks on AM/PM boundary)
+        grp = grp.assign(_sort_key=grp["Time"].apply(time_to_minutes))
+        grp = grp.sort_values("_sort_key", na_position="last").drop(columns="_sort_key")
 
         for side in ("Over", "Under"):
             ev_col     = f"{side} EV%"
