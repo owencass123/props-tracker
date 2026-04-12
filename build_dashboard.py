@@ -84,6 +84,10 @@ def build_records(df):
     if df.empty:
         return []
 
+    # Drop groups where every row has null odds — these are players the scraper
+    # found in the grid but no sportsbooks have posted lines for yet.
+    df = df[df["Over Line"].notna() | df["Under Line"].notna() | df["Over Odds"].notna()]
+
     records = []
     group_cols = ["Player", "Matchup", "Sportsbook", "Date"]
 
