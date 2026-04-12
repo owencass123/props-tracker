@@ -186,6 +186,96 @@ def build_records(df):
 
     return records
 
+# ── consensus records (one per player/date/side) ──────────────────────────────
+
+def _avg(vals):
+    v = [x for x in vals if x is not None and not (isinstance(x, float) and np.isnan(x))]
+    return sum(v) / len(v) if v else None
+
+def _in_favor(fo, lo):
+    if fo is None or lo is None: return None
+    if fo < 0 and lo < 0:   return lo < fo
+    if fo > 0 and lo > 0:   return abs(lo) < abs(fo)
+    if fo >= 0 and lo < 0:  return True
+    if fo < 0 and lo >= 0:  return False
+    return None
+
+def build_consensus_records(records):
+    """
+    Collapse individual book records → one consensus record per
+    (player, date, side).  Rules:
+      • Find the line used by the most sportsbooks.
+      • If two lines tie in book count → skip (no grade).
+      • Only include groups with ≥ 3 books at the dominant line.
+      • Average EV%, firstOdds, lastOdds, movement across those books.
+      • Re-derive Win/Loss from actual Ks vs dominant line.
+    """
+    from collections import Counter
+
+    groups = {}
+    for r in records:
+        key = (r["player"], r["date"], r["side"])
+        groups.setdefault(key, []).append(r)
+
+    consensus = []
+    for (player, date, side), recs in groups.items():
+        # Count books per line (ignore null lines)
+        line_counts = Counter(r["line"] for r in recs if r["line"] is not None)
+        if not line_counts:
+            continue
+
+        max_count = max(line_counts.values())
+        dominant_lines = [l for l, c in line_counts.items() if c == max_count]
+
+        # Tie between lines → skip
+        if len(dominant_lines) > 1:
+            continue
+
+        dominant_line = dominant_lines[0]
+        dom_recs = [r for r in recs if r["line"] == dominant_line]
+
+        # Need ≥ 3 books
+        if len(dom_recs) < 3:
+            continue
+
+        avg_ev     = _avg([r["ev"]         for r in dom_recs])
+        avg_first  = _avg([r["firstOdds"]  for r in dom_recs])
+        avg_last   = _avg([r["lastOdds"]   for r in dom_recs])
+        avg_mov    = _avg([r["movement"]   for r in dom_recs])
+        mov_favor  = _in_favor(avg_first, avg_last)
+
+        actual_ks = next((r["actualKs"] for r in dom_recs if r["actualKs"] is not None), None)
+
+        if actual_ks is not None:
+            if abs(actual_ks - dominant_line) < 1e-9:
+                result = "Push"
+            elif side == "Over":
+                result = "Win" if actual_ks > dominant_line else "Loss"
+            else:
+                result = "Win" if actual_ks < dominant_line else "Loss"
+        else:
+            result = ""   # pending
+
+        first = dom_recs[0]
+        consensus.append({
+            "player":    player,
+            "matchup":   first["matchup"],
+            "date":      date,
+            "gameTime":  first["gameTime"],
+            "side":      side,
+            "line":      dominant_line,
+            "bookCount": len(dom_recs),
+            "ev":        avg_ev,
+            "firstOdds": avg_first,
+            "lastOdds":  avg_last,
+            "movement":  round(avg_mov, 1) if avg_mov is not None else None,
+            "movFavor":  mov_favor,
+            "result":    result,
+            "actualKs":  actual_ks,
+        })
+
+    return consensus
+
 # ── HTML template ─────────────────────────────────────────────────────────────
 
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -379,12 +469,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Raw Data -->
   <div id="tab-raw" class="tab-panel section">
-    <h2>Raw Data</h2>
+    <h2>Raw Data <span style="font-size:12px;font-weight:400;color:var(--sub)">(consensus — 1 graded bet per player/date/side)</span></h2>
     <div style="overflow-x:auto;"><table id="raw-table">
       <thead><tr>
-        <th>Player</th><th>Date</th><th>Book</th><th>Side</th>
-        <th>EV%</th><th>1st Odds</th><th>Last Odds</th><th>Movement</th>
-        <th>Line</th><th>Actual Ks</th><th>Result</th>
+        <th>Player</th><th>Date</th><th>Side</th>
+        <th>Avg EV%</th><th>Avg Open</th><th>Avg Close</th><th>Avg Move</th>
+        <th>Line</th><th>Books</th><th>Actual Ks</th><th>Result</th>
       </tr></thead>
       <tbody id="raw-body"></tbody>
     </table></div>
@@ -393,7 +483,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <script>
-const RAW = __DATA__;
+// RAW = one consensus record per (player, date, side) — used for all stats/grading
+// BOOK_RECORDS = one record per (player, book, date, side) — used for By Player details
+const RAW = __CONSENSUS__;
+const BOOK_RECORDS = __BOOK_DATA__;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function pctClass(p){ return p>=55?'high':p>=45?'mid':'low'; }
@@ -606,108 +699,123 @@ function buildRawTable(rows){
   tbody.innerHTML='';
   sorted.slice(0,MAX).forEach(r=>{
     const tr=document.createElement('tr');
-    const res=r.result==='Win'?'<span class="win">Win</span>':r.result==='Loss'?'<span class="loss">Loss</span>':r.result?'<span class="pending">'+r.result+'</span>':'<span class="n">Pending</span>';
+    const res=r.result==='Win'?'<span class="win">Win</span>':r.result==='Loss'?'<span class="loss">Loss</span>':r.result==='Push'?'<span style="color:var(--warn)">Push</span>':r.result?'<span class="pending">'+r.result+'</span>':'<span class="n">Pending</span>';
     const mov=r.movement===null?'—':(r.movement>=0?'+':'')+r.movement+(r.movFavor===true?' ↑':r.movFavor===false?' ↓':'');
-    tr.innerHTML=`<td>${r.player}</td><td>${r.date||'—'}</td><td>${r.book}</td><td>${r.side}</td>`+
+    const displayName=(r.player||'').replace(/\s*\([^)]*\)/g,'').trim();
+    tr.innerHTML=`<td>${displayName}</td><td>${r.date||'—'}</td><td>${r.side}</td>`+
       `<td>${r.ev!==null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—'}</td>`+
-      `<td>${fmtOdds(r.firstOdds)}</td><td>${fmtOdds(r.lastOdds)}</td><td>${mov}</td>`+
-      `<td>${r.line!==null?r.line:'—'}</td><td>${r.actualKs!==null&&r.actualKs!==undefined?r.actualKs:'—'}</td><td>${res}</td>`;
+      `<td>${fmtAvgOdds(r.firstOdds)}</td><td>${fmtAvgOdds(r.lastOdds)}</td><td>${mov}</td>`+
+      `<td>${r.line!==null?r.line:'—'}</td><td>${r.bookCount||'—'}</td><td>${r.actualKs!==null&&r.actualKs!==undefined?r.actualKs:'—'}</td><td>${res}</td>`;
     tbody.appendChild(tr);
   });
   if(sorted.length>MAX){
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td colspan="11" style="text-align:center;color:var(--sub)">Showing ${MAX} of ${sorted.length} rows — use filters to narrow</td>`;
+    tr.innerHTML=`<td colspan="11" style="text-align:center;color:var(--sub)">Showing ${MAX} of ${sorted.length} consensus bets — use filters to narrow</td>`;
     tbody.appendChild(tr);
   }
 }
 
 // ── player summary ────────────────────────────────────────────────────────────
-function avgArr(arr){
-  const v=arr.filter(x=>x!==null&&x!==undefined&&!isNaN(x));
-  return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null;
-}
 function fmtAvgOdds(v){
-  if(v===null||isNaN(v)) return '—';
+  if(v===null||v===undefined||isNaN(v)) return '—';
   const r=Math.round(v); return r>0?'+'+r:String(r);
 }
 function fmtAvgMov(v){
-  if(v===null||isNaN(v)) return '—';
+  if(v===null||v===undefined||isNaN(v)) return '—';
   const r=Math.round(v*10)/10; return (r>=0?'+':'')+r;
 }
 function fmtAvgEv(v){
-  if(v===null||isNaN(v)) return '—';
+  if(v===null||v===undefined||isNaN(v)) return '—';
   return (v>=0?'+':'')+v.toFixed(1)+'%';
 }
 
 function buildPlayerTable(base){
-  // Group: player → date → lineKey → side → [records]
-  // lineKey is the numeric line value as a string (e.g. "5.5") or "__" for null
+  // base = filtered consensus records (one per player/date/side)
+  // For book details, look up matching entries in BOOK_RECORDS
+
+  // Build a lookup map from BOOK_RECORDS: player+date+side+line → [book records]
+  const bookMap={};
+  BOOK_RECORDS.forEach(r=>{
+    const k=r.player+'|'+r.date+'|'+r.side+'|'+(r.line!=null?r.line:'');
+    if(!bookMap[k]) bookMap[k]=[];
+    bookMap[k].push(r);
+  });
+
+  // Group consensus records: player → date → [records]
   const map={};
   base.forEach(r=>{
-    const p=r.player, d=r.date, lk=r.line!==null&&r.line!==undefined?String(r.line):'__';
-    if(!map[p]) map[p]={};
-    if(!map[p][d]) map[p][d]={};
-    if(!map[p][d][lk]) map[p][d][lk]={Over:[],Under:[]};
-    if(r.side==='Over'||r.side==='Under') map[p][d][lk][r.side].push(r);
+    if(!map[r.player]) map[r.player]={};
+    if(!map[r.player][r.date]) map[r.player][r.date]=[];
+    map[r.player][r.date].push(r);
   });
 
   let html='';
-  // Sort players alphabetically (strip position tag for display)
   Object.keys(map).sort().forEach(player=>{
-    // Sort dates newest first
-    const sortedDates=Object.keys(map[player]).sort((a,b)=>{
-      const da=parseDate(a),db=parseDate(b); return db-da;
-    });
+    const sortedDates=Object.keys(map[player]).sort((a,b)=>parseDate(b)-parseDate(a));
     sortedDates.forEach(date=>{
-      const lineMap=map[player][date];
-      // Sort lines numerically
-      const lines=Object.keys(lineMap).filter(l=>l!=='__').sort((a,b)=>parseFloat(a)-parseFloat(b));
-      if(lineMap['__']) lines.push('__');
-      if(!lines.length) return;
+      const recs=map[player][date]; // consensus records for this player/date
+      if(!recs.length) return;
+
+      // Collect unique lines across both sides
+      const lineSet=new Set(recs.map(r=>r.line!=null?String(r.line):'__'));
+      const lines=[...lineSet].filter(l=>l!=='__').sort((a,b)=>parseFloat(a)-parseFloat(b));
+      if(lineSet.has('__')) lines.push('__');
 
       const displayName=player.replace(/\\s*\\([^)]*\\)/g,'').trim();
       html+=`<div class="pc">`;
       html+=`<div class="pc-hdr"><span class="pc-name">${displayName}</span><span class="pc-date">${date}</span></div>`;
 
       lines.forEach(lk=>{
-        const lineDisplay=lk==='__'?'—':lk;
+        const lineVal=lk==='__'?null:parseFloat(lk);
+        const lineRecs=recs.filter(r=>(r.line!=null?String(r.line):'__')===lk);
+        if(!lineRecs.length) return;
+
         html+=`<div class="pc-line-block">`;
-        if(lines.length>1) html+=`<div class="pc-line-label">Line: ${lineDisplay}</div>`;
+        if(lines.length>1) html+=`<div class="pc-line-label">Line: ${lk==='__'?'—':lk}</div>`;
 
         ['Over','Under'].forEach(side=>{
-          const recs=lineMap[lk][side];
-          if(!recs.length) return;
+          const cr=lineRecs.find(r=>r.side===side);
+          if(!cr) return;
 
-          const aEv  = avgArr(recs.map(r=>r.ev));
-          const aOpen= avgArr(recs.map(r=>r.firstOdds));
-          const aClose=avgArr(recs.map(r=>r.lastOdds));
-          const aMov = avgArr(recs.map(r=>r.movement));
+          // Result badge
+          let resBadge='';
+          if(cr.result==='Win')  resBadge=`<span class="win" style="margin-left:auto;font-size:12px">Win ✓</span>`;
+          else if(cr.result==='Loss') resBadge=`<span class="loss" style="margin-left:auto;font-size:12px">Loss ✗</span>`;
+          else if(cr.result==='Push') resBadge=`<span style="color:var(--warn);margin-left:auto;font-size:12px">Push</span>`;
+          else if(cr.actualKs!==null&&cr.actualKs!==undefined) resBadge=`<span class="n" style="margin-left:auto;font-size:12px">—</span>`;
+          else resBadge=`<span class="pending" style="margin-left:auto;font-size:12px">Pending</span>`;
 
-          // unique id for toggle
+          const ksStr=cr.actualKs!==null&&cr.actualKs!==undefined?` · ${cr.actualKs} K`:'';
           const uid=('pd_'+player+'_'+date+'_'+lk+'_'+side).replace(/[^a-zA-Z0-9]/g,'_');
 
           html+=`<div class="pc-side-row">`;
           html+=`<span class="side-pill ${side.toLowerCase()}">${side}</span>`;
-          html+=`<span class="pc-stat">EV: <b>${fmtAvgEv(aEv)}</b></span>`;
+          html+=`<span class="pc-stat">EV: <b>${fmtAvgEv(cr.ev)}</b></span>`;
           html+=`<span class="pc-stat-sep">|</span>`;
-          html+=`<span class="pc-stat">Open: <b>${fmtAvgOdds(aOpen)}</b></span>`;
+          html+=`<span class="pc-stat">Open: <b>${fmtAvgOdds(cr.firstOdds)}</b></span>`;
           html+=`<span class="pc-stat-sep">|</span>`;
-          html+=`<span class="pc-stat">Close: <b>${fmtAvgOdds(aClose)}</b></span>`;
+          html+=`<span class="pc-stat">Close: <b>${fmtAvgOdds(cr.lastOdds)}</b></span>`;
           html+=`<span class="pc-stat-sep">|</span>`;
-          html+=`<span class="pc-stat">Move: <b>${fmtAvgMov(aMov)}</b></span>`;
-          html+=`<span class="pc-stat" style="margin-left:auto;color:var(--sub);font-size:11px">${recs.length} book${recs.length!==1?'s':''}</span>`;
+          html+=`<span class="pc-stat">Move: <b>${fmtAvgMov(cr.movement)}</b></span>`;
+          html+=`<span class="pc-stat-sep">|</span>`;
+          html+=`<span class="pc-stat"><b>${cr.bookCount}</b> books${ksStr}</span>`;
+          html+=resBadge;
           html+=`</div>`;
 
-          // collapsible book breakdown
-          html+=`<button class="expand-btn" onclick="togglePD('${uid}')"><span id="${uid}_arrow">▶</span> Book Details</button>`;
-          html+=`<div class="book-grid" id="${uid}">`;
-          html+=`<table><thead><tr><th>Book</th><th>EV%</th><th>Open</th><th>Close</th><th>Move</th></tr></thead><tbody>`;
-          [...recs].sort((a,b)=>(a.book||'').localeCompare(b.book||'')).forEach(r=>{
-            const mov=r.movement!==null?(r.movement>=0?'+':'')+r.movement:'—';
-            const evStr=r.ev!==null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—';
-            html+=`<tr><td>${r.book}</td><td>${evStr}</td><td>${fmtOdds(r.firstOdds)}</td><td>${fmtOdds(r.lastOdds)}</td><td>${mov}</td></tr>`;
-          });
-          html+=`</tbody></table></div>`;
+          // Book detail dropdown
+          const bookKey=player+'|'+date+'|'+side+'|'+(cr.line!=null?cr.line:'');
+          const bookRecs=(bookMap[bookKey]||[]).sort((a,b)=>(a.book||'').localeCompare(b.book||''));
+          if(bookRecs.length){
+            html+=`<button class="expand-btn" onclick="togglePD('${uid}')"><span id="${uid}_arrow">▶</span> Book Details</button>`;
+            html+=`<div class="book-grid" id="${uid}">`;
+            html+=`<table><thead><tr><th>Book</th><th>EV%</th><th>Open</th><th>Close</th><th>Move</th></tr></thead><tbody>`;
+            bookRecs.forEach(r=>{
+              const mov=r.movement!==null?(r.movement>=0?'+':'')+r.movement:'—';
+              const evStr=r.ev!==null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—';
+              html+=`<tr><td>${r.book}</td><td>${evStr}</td><td>${fmtOdds(r.firstOdds)}</td><td>${fmtOdds(r.lastOdds)}</td><td>${mov}</td></tr>`;
+            });
+            html+=`</tbody></table></div>`;
+          }
         });
         html+=`</div>`; // pc-line-block
       });
@@ -787,14 +895,19 @@ def main():
     from datetime import datetime
     from zoneinfo import ZoneInfo
     df = load_data()
-    records = build_records(df)
+    book_records  = build_records(df)
+    consensus     = build_consensus_records(book_records)
 
     updated = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %H:%M CT")
-    data_json = json.dumps(records, default=str)
+    consensus_json  = json.dumps(consensus,    default=str)
+    book_json       = json.dumps(book_records, default=str)
 
-    html = HTML_TEMPLATE.replace("__DATA__", data_json).replace("__UPDATED__", updated)
+    html = (HTML_TEMPLATE
+            .replace("__CONSENSUS__",  consensus_json)
+            .replace("__BOOK_DATA__",  book_json)
+            .replace("__UPDATED__",    updated))
     OUTPUT.write_text(html, encoding="utf-8")
-    print(f"✅ Dashboard written → {OUTPUT}  ({len(records)} records)")
+    print(f"✅ Dashboard written → {OUTPUT}  ({len(consensus)} consensus / {len(book_records)} book records)")
 
 
 if __name__ == "__main__":
