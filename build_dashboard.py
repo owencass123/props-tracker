@@ -914,23 +914,16 @@ function togglePD(uid){
 }
 
 // ── main refresh ──────────────────────────────────────────────────────────────
-function getFilteredAllResults(){
-  // Same as getFiltered() but ignores the results filter — used for By Player
-  // so today's ungraded props still appear
+function getFilteredForDisplay(){
+  // Used for Raw Data and By Player tabs:
+  // - Ignores the results filter (shows pending/ungraded rows)
+  // - Allows null EV through (today's games may not have EV scraped yet)
+  // - Still respects date, side, book filters
   const side     = document.getElementById('f-side').value;
-  const book     = document.getElementById('f-book').value;
-  const evMin    = parseFloat(evMinSlider.value);
-  const evMax    = parseFloat(evMaxSlider.value);
-  const movF     = document.getElementById('f-mov').value;
   const dateFrom = document.getElementById('f-date-from').value;
   const dateTo   = document.getElementById('f-date-to').value;
   return RAW.filter(r=>{
     if(side!=='both' && r.side!==side) return false;
-    if(book!=='all' && r.book!==book) return false;
-    if(r.ev===null || r.ev<evMin || r.ev>evMax) return false;
-    if(movF==='favor'  && r.movFavor!==true)  return false;
-    if(movF==='against'&& r.movFavor!==false) return false;
-    if(movF==='none'   && r.movement!==0 && r.movement!==null) return false;
     if(dateFrom){ const d=parseDate(r.date); if(!d||d<new Date(dateFrom)) return false; }
     if(dateTo){   const d=parseDate(r.date); if(!d||d>new Date(dateTo+'T23:59:59')) return false; }
     return true;
@@ -944,8 +937,9 @@ function refresh(){
   buildMovTable(filtered);
   buildComboTable(filtered);
   buildBookTable(filtered);
-  buildPlayerTable(getFilteredAllResults());
-  buildRawTable(filtered);
+  const display=getFilteredForDisplay();
+  buildPlayerTable(display);
+  buildRawTable(display);
 }
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
