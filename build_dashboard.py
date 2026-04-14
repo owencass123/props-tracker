@@ -843,23 +843,25 @@ function buildPlayerTable(base){
     byDate[r.date][gt][r.player].push(r);
   });
 
-  // Today's date string in MM/DD/YYYY
+  // Sort dates newest first; auto-expand the most recent date with data
+  const sortedDates=Object.keys(byDate).sort((a,b)=>parseDate(b)-parseDate(a));
+  const mostRecentDate=sortedDates[0];
+
+  // Also compute today string to label it if it matches
   const now=new Date();
   const todayStr=(now.getMonth()+1).toString().padStart(2,'0')+'/'
                 +now.getDate().toString().padStart(2,'0')+'/'
                 +now.getFullYear();
 
-  // Sort dates newest first
-  const sortedDates=Object.keys(byDate).sort((a,b)=>parseDate(b)-parseDate(a));
-
   let html='';
   sortedDates.forEach((date,di)=>{
+    const isNewest=date===mostRecentDate;
     const isToday=date===todayStr;
     const dateLabel=isToday?`Today — ${date}`:date;
     const playerCount=[...new Set(Object.values(byDate[date]).flatMap(g=>Object.keys(g)))].length;
     const dgId='dg_'+date.replace(/\//g,'_');
 
-    html+=`<div class="date-group${isToday?' open':''}" id="${dgId}">`;
+    html+=`<div class="date-group${isNewest?' open':''}" id="${dgId}">`;
     html+=`<div class="date-group-hdr" onclick="toggleDG('${dgId}')">`;
     html+=`<span class="date-group-title">${dateLabel}</span>`;
     html+=`<span style="display:flex;align-items:center;gap:12px">`;
