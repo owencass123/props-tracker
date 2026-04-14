@@ -356,6 +356,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .book-grid td{padding:5px 10px;border-bottom:1px solid #1a1d27;}
   .book-grid tr:last-child td{border-bottom:none;}
   .book-grid tr:hover td{background:#252836;}
+  /* ── Date accordion ── */
+  .date-group{margin-bottom:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .date-group-hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#252836;cursor:pointer;user-select:none;}
+  .date-group-hdr:hover{background:#2e3245;}
+  .date-group-title{font-weight:700;font-size:14px;color:#fff;}
+  .date-group-meta{font-size:12px;color:var(--sub);}
+  .date-group-arrow{font-size:13px;color:var(--sub);transition:transform .2s;}
+  .date-group-body{display:none;padding:10px;}
+  .date-group.open .date-group-body{display:block;}
+  .date-group.open .date-group-arrow{transform:rotate(90deg);}
+  .game-group{margin-bottom:8px;}
+  .game-group-time{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent2);padding:4px 0 6px 2px;}
   @media(max-width:600px){.cards{grid-template-columns:1fr 1fr;}.filters{flex-direction:column;}.pc-side-row{gap:6px;}}
 </style>
 </head>
@@ -813,10 +825,7 @@ function fmtAvgEv(v){
 }
 
 function buildPlayerTable(base){
-  // base = filtered consensus records (one per player/date/side)
-  // For book details, look up matching entries in BOOK_RECORDS
-
-  // Build a lookup map from BOOK_RECORDS: player+date+side+line → [book records]
+  // Build BOOK_RECORDS lookup: player|date|side|line → [book records]
   const bookMap={};
   BOOK_RECORDS.forEach(r=>{
     const k=r.player+'|'+r.date+'|'+r.side+'|'+(r.line!=null?r.line:'');
@@ -824,86 +833,124 @@ function buildPlayerTable(base){
     bookMap[k].push(r);
   });
 
-  // Group consensus records: player → date → [records]
-  const map={};
+  // Group by date → gameTime → player
+  const byDate={};
   base.forEach(r=>{
-    if(!map[r.player]) map[r.player]={};
-    if(!map[r.player][r.date]) map[r.player][r.date]=[];
-    map[r.player][r.date].push(r);
+    if(!byDate[r.date]) byDate[r.date]={};
+    const gt=r.gameTime||'__';
+    if(!byDate[r.date][gt]) byDate[r.date][gt]={};
+    if(!byDate[r.date][gt][r.player]) byDate[r.date][gt][r.player]=[];
+    byDate[r.date][gt][r.player].push(r);
   });
 
+  // Today's date string in MM/DD/YYYY
+  const now=new Date();
+  const todayStr=(now.getMonth()+1).toString().padStart(2,'0')+'/'
+                +now.getDate().toString().padStart(2,'0')+'/'
+                +now.getFullYear();
+
+  // Sort dates newest first
+  const sortedDates=Object.keys(byDate).sort((a,b)=>parseDate(b)-parseDate(a));
+
   let html='';
-  Object.keys(map).sort().forEach(player=>{
-    const sortedDates=Object.keys(map[player]).sort((a,b)=>parseDate(b)-parseDate(a));
-    sortedDates.forEach(date=>{
-      const recs=map[player][date]; // consensus records for this player/date
-      if(!recs.length) return;
+  sortedDates.forEach((date,di)=>{
+    const isToday=date===todayStr;
+    const dateLabel=isToday?`Today — ${date}`:date;
+    const playerCount=[...new Set(Object.values(byDate[date]).flatMap(g=>Object.keys(g)))].length;
+    const dgId='dg_'+date.replace(/\//g,'_');
 
-      // Collect unique lines across both sides
-      const lineSet=new Set(recs.map(r=>r.line!=null?String(r.line):'__'));
-      const lines=[...lineSet].filter(l=>l!=='__').sort((a,b)=>parseFloat(a)-parseFloat(b));
-      if(lineSet.has('__')) lines.push('__');
+    html+=`<div class="date-group${isToday?' open':''}" id="${dgId}">`;
+    html+=`<div class="date-group-hdr" onclick="toggleDG('${dgId}')">`;
+    html+=`<span class="date-group-title">${dateLabel}</span>`;
+    html+=`<span style="display:flex;align-items:center;gap:12px">`;
+    html+=`<span class="date-group-meta">${playerCount} pitcher${playerCount!==1?'s':''}</span>`;
+    html+=`<span class="date-group-arrow">▶</span>`;
+    html+=`</span></div>`;
+    html+=`<div class="date-group-body">`;
 
-      const displayName=player.replace(/\\s*\\([^)]*\\)/g,'').trim();
-      html+=`<div class="pc">`;
-      html+=`<div class="pc-hdr"><span class="pc-name">${displayName}</span><span class="pc-date">${date}</span></div>`;
-
-      lines.forEach(lk=>{
-        const lineVal=lk==='__'?null:parseFloat(lk);
-        const lineRecs=recs.filter(r=>(r.line!=null?String(r.line):'__')===lk);
-        if(!lineRecs.length) return;
-
-        html+=`<div class="pc-line-block">`;
-        if(lines.length>1) html+=`<div class="pc-line-label">Line: ${lk==='__'?'—':lk}</div>`;
-
-        ['Over','Under'].forEach(side=>{
-          const cr=lineRecs.find(r=>r.side===side);
-          if(!cr) return;
-
-          // Result badge
-          let resBadge='';
-          if(cr.result==='Win')  resBadge=`<span class="win" style="margin-left:auto;font-size:12px">Win ✓</span>`;
-          else if(cr.result==='Loss') resBadge=`<span class="loss" style="margin-left:auto;font-size:12px">Loss ✗</span>`;
-          else if(cr.result==='Push') resBadge=`<span style="color:var(--warn);margin-left:auto;font-size:12px">Push</span>`;
-          else if(cr.actualKs!==null&&cr.actualKs!==undefined) resBadge=`<span class="n" style="margin-left:auto;font-size:12px">—</span>`;
-          else resBadge=`<span class="pending" style="margin-left:auto;font-size:12px">Pending</span>`;
-
-          const ksStr=cr.actualKs!==null&&cr.actualKs!==undefined?` · ${cr.actualKs} K`:'';
-          const uid=('pd_'+player+'_'+date+'_'+lk+'_'+side).replace(/[^a-zA-Z0-9]/g,'_');
-
-          html+=`<div class="pc-side-row">`;
-          html+=`<span class="side-pill ${side.toLowerCase()}">${side}</span>`;
-          html+=`<span class="pc-stat">EV: <b>${fmtAvgEv(cr.ev)}</b></span>`;
-          html+=`<span class="pc-stat-sep">|</span>`;
-          html+=`<span class="pc-stat">Open: <b>${fmtAvgOdds(cr.firstOdds)}</b></span>`;
-          html+=`<span class="pc-stat-sep">|</span>`;
-          html+=`<span class="pc-stat">Close: <b>${fmtAvgOdds(cr.lastOdds)}</b></span>`;
-          html+=`<span class="pc-stat-sep">|</span>`;
-          html+=`<span class="pc-stat">Move: <b>${fmtAvgMov(cr.movement)}</b></span>`;
-          html+=`<span class="pc-stat-sep">|</span>`;
-          html+=`<span class="pc-stat"><b>${cr.bookCount}</b> books${ksStr}</span>`;
-          html+=resBadge;
-          html+=`</div>`;
-
-          // Book detail dropdown
-          const bookKey=player+'|'+date+'|'+side+'|'+(cr.line!=null?cr.line:'');
-          const bookRecs=(bookMap[bookKey]||[]).sort((a,b)=>(a.book||'').localeCompare(b.book||''));
-          if(bookRecs.length){
-            html+=`<button class="expand-btn" onclick="togglePD('${uid}')"><span id="${uid}_arrow">▶</span> Book Details</button>`;
-            html+=`<div class="book-grid" id="${uid}">`;
-            html+=`<table><thead><tr><th>Book</th><th>EV%</th><th>Open</th><th>Close</th><th>Move</th></tr></thead><tbody>`;
-            bookRecs.forEach(r=>{
-              const mov=r.movement!==null?(r.movement>=0?'+':'')+r.movement:'—';
-              const evStr=r.ev!==null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—';
-              html+=`<tr><td>${r.book}</td><td>${evStr}</td><td>${fmtOdds(r.firstOdds)}</td><td>${fmtOdds(r.lastOdds)}</td><td>${mov}</td></tr>`;
-            });
-            html+=`</tbody></table></div>`;
-          }
-        });
-        html+=`</div>`; // pc-line-block
-      });
-      html+=`</div>`; // pc
+    // Sort game times: convert to 24h minutes, unknowns last
+    const gameTimes=Object.keys(byDate[date]).sort((a,b)=>{
+      if(a==='__') return 1; if(b==='__') return -1;
+      return gameTimeTo24h(a).localeCompare(gameTimeTo24h(b));
     });
+
+    gameTimes.forEach(gt=>{
+      const players=byDate[date][gt];
+      const timeLabel=gt==='__'?'Time TBD':gt;
+
+      html+=`<div class="game-group">`;
+      html+=`<div class="game-group-time">🕐 ${timeLabel}</div>`;
+
+      // Sort players alphabetically within this time slot
+      Object.keys(players).sort().forEach(player=>{
+        const recs=players[player];
+        const displayName=player.replace(/\s*\([^)]*\)/g,'').trim();
+
+        // Collect unique lines
+        const lineSet=new Set(recs.map(r=>r.line!=null?String(r.line):'__'));
+        const lines=[...lineSet].filter(l=>l!=='__').sort((a,b)=>parseFloat(a)-parseFloat(b));
+        if(lineSet.has('__')) lines.push('__');
+
+        html+=`<div class="pc">`;
+        html+=`<div class="pc-hdr"><span class="pc-name">${displayName}</span></div>`;
+
+        lines.forEach(lk=>{
+          const lineRecs=recs.filter(r=>(r.line!=null?String(r.line):'__')===lk);
+          if(!lineRecs.length) return;
+
+          html+=`<div class="pc-line-block">`;
+          if(lines.length>1) html+=`<div class="pc-line-label">Line: ${lk==='__'?'—':lk}</div>`;
+
+          ['Over','Under'].forEach(side=>{
+            const cr=lineRecs.find(r=>r.side===side);
+            if(!cr) return;
+
+            let resBadge='';
+            if(cr.result==='Win')       resBadge=`<span class="win" style="margin-left:auto;font-size:12px">Win ✓</span>`;
+            else if(cr.result==='Loss') resBadge=`<span class="loss" style="margin-left:auto;font-size:12px">Loss ✗</span>`;
+            else if(cr.result==='Push') resBadge=`<span style="color:var(--warn);margin-left:auto;font-size:12px">Push</span>`;
+            else                        resBadge=`<span class="pending" style="margin-left:auto;font-size:12px">Pending</span>`;
+
+            const ksStr=cr.actualKs!=null?` · ${cr.actualKs} K`:'';
+            const uid=('pd_'+player+'_'+date+'_'+lk+'_'+side).replace(/[^a-zA-Z0-9]/g,'_');
+
+            html+=`<div class="pc-side-row">`;
+            html+=`<span class="side-pill ${side.toLowerCase()}">${side}</span>`;
+            html+=`<span class="pc-stat">EV: <b>${fmtAvgEv(cr.ev)}</b></span>`;
+            html+=`<span class="pc-stat-sep">|</span>`;
+            html+=`<span class="pc-stat">Open: <b>${fmtAvgOdds(cr.firstOdds)}</b></span>`;
+            html+=`<span class="pc-stat-sep">|</span>`;
+            html+=`<span class="pc-stat">Close: <b>${fmtAvgOdds(cr.lastOdds)}</b></span>`;
+            html+=`<span class="pc-stat-sep">|</span>`;
+            html+=`<span class="pc-stat">Move: <b>${fmtAvgMov(cr.movement)}</b></span>`;
+            html+=`<span class="pc-stat-sep">|</span>`;
+            html+=`<span class="pc-stat"><b>${cr.bookCount}</b> books${ksStr}</span>`;
+            html+=resBadge;
+            html+=`</div>`;
+
+            const bookKey=player+'|'+date+'|'+side+'|'+(cr.line!=null?cr.line:'');
+            const bookRecs=(bookMap[bookKey]||[]).sort((a,b)=>(a.book||'').localeCompare(b.book||''));
+            if(bookRecs.length){
+              html+=`<button class="expand-btn" onclick="togglePD('${uid}')"><span id="${uid}_arrow">▶</span> Book Details</button>`;
+              html+=`<div class="book-grid" id="${uid}">`;
+              html+=`<table><thead><tr><th>Book</th><th>EV%</th><th>Open</th><th>Close</th><th>Move</th></tr></thead><tbody>`;
+              bookRecs.forEach(r=>{
+                const mov=r.movement!==null?(r.movement>=0?'+':'')+r.movement:'—';
+                const evStr=r.ev!==null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—';
+                html+=`<tr><td>${r.book}</td><td>${evStr}</td><td>${fmtOdds(r.firstOdds)}</td><td>${fmtOdds(r.lastOdds)}</td><td>${mov}</td></tr>`;
+              });
+              html+=`</tbody></table></div>`;
+            }
+          });
+          html+=`</div>`; // pc-line-block
+        });
+        html+=`</div>`; // pc
+      });
+      html+=`</div>`; // game-group
+    });
+
+    html+=`</div>`; // date-group-body
+    html+=`</div>`; // date-group
   });
 
   if(!html) html='<p style="color:var(--sub);text-align:center;padding:20px">No data matches current filters.</p>';
@@ -915,6 +962,9 @@ function togglePD(uid){
   const arrow=document.getElementById(uid+'_arrow');
   const open=el.classList.toggle('open');
   if(arrow) arrow.textContent=open?'▼':'▶';
+}
+function toggleDG(id){
+  document.getElementById(id).classList.toggle('open');
 }
 
 // ── main refresh ──────────────────────────────────────────────────────────────
