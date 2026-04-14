@@ -430,7 +430,7 @@ def process_cell(driver, cell, player, matchup, book, rows_out):
             "Under Odds":  un_odds,
             "Under Line":  fmt_line(un_line, "u"),
             "Time":        normalize_time(ts),
-            "Date":        normalize_date(ts) or TODAY,
+            "Date":        TODAY,
             "Scrape Date": TODAY,
         })
 
