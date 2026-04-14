@@ -419,6 +419,12 @@ def process_cell(driver, cell, player, matchup, book, rows_out):
             s = str(val).rstrip("0").rstrip(".")
             return prefix + s
 
+        # Extract the date embedded in the panel timestamp (e.g. "04/13/2026 05:20 PM").
+        # If it belongs to a future date, skip this entry entirely.
+        panel_date = normalize_date(ts)
+        if panel_date and panel_date > TODAY:
+            continue
+
         rows_out.append({
             "Player":      player,
             "Matchup":     matchup,
