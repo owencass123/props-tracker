@@ -255,7 +255,7 @@ def main():
             if key not in cache:
                 cache[key] = find_ks(date_str, str(row.get("Player", "")))
             actual = cache[key]
-            df.at[idx, "Actual Ks"]    = actual if actual is not None else ""
+            df.at[idx, "Actual Ks"]    = str(actual) if actual is not None else ""
             df.at[idx, "Over Result"]  = decide(actual, parse_line(row.get("Over Line",  "")), "over")
             df.at[idx, "Under Result"] = decide(actual, parse_line(row.get("Under Line", "")), "under")
             updated += 1
