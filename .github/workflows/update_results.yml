@@ -1,0 +1,47 @@
+name: Update Results Only
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Update results (MLB API)
+        run: python update_results.py
+
+      - name: Build dashboard
+        run: python build_dashboard.py
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ docs/
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Update results $(date -u '+%Y-%m-%d %H:%M UTC')"
+          for i in 1 2 3 4; do
+            git push && exit 0
+            echo "Push attempt $i failed, rebasing..."
+            git fetch origin
+            git rebase origin/main
+            sleep $((i * 3))
+          done
+          echo "All push attempts failed" && exit 1
