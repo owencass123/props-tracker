@@ -913,11 +913,17 @@ function buildPlayerTable(base){
             else if(cr.result==='Push') resBadge=`<span style="color:var(--warn);margin-left:auto;font-size:12px">Push</span>`;
             else                        resBadge=`<span class="pending" style="margin-left:auto;font-size:12px">Pending</span>`;
 
-            const ksStr=cr.actualKs!=null?` · ${cr.actualKs} K`:'';
+            const linePrefix=side==='Over'?'o':'u';
+            const lineStr=cr.line!=null?`${linePrefix}${cr.line}`:'—';
+            const ksStr=cr.actualKs!=null?`${cr.actualKs} K`:'—';
             const uid=('pd_'+player+'_'+date+'_'+lk+'_'+side).replace(/[^a-zA-Z0-9]/g,'_');
 
             html+=`<div class="pc-side-row">`;
             html+=`<span class="side-pill ${side.toLowerCase()}">${side}</span>`;
+            html+=`<span class="pc-stat">Line: <b>${lineStr}</b></span>`;
+            html+=`<span class="pc-stat-sep">|</span>`;
+            html+=`<span class="pc-stat">Actual: <b>${ksStr}</b></span>`;
+            html+=`<span class="pc-stat-sep">|</span>`;
             html+=`<span class="pc-stat">EV: <b>${fmtAvgEv(cr.ev)}</b></span>`;
             html+=`<span class="pc-stat-sep">|</span>`;
             html+=`<span class="pc-stat">Open: <b>${fmtAvgOdds(cr.firstOdds)}</b></span>`;
@@ -926,7 +932,7 @@ function buildPlayerTable(base){
             html+=`<span class="pc-stat-sep">|</span>`;
             html+=`<span class="pc-stat">Move: <b>${fmtAvgMov(cr.movement)}</b></span>`;
             html+=`<span class="pc-stat-sep">|</span>`;
-            html+=`<span class="pc-stat"><b>${cr.bookCount}</b> books${ksStr}</span>`;
+            html+=`<span class="pc-stat"><b>${cr.bookCount}</b> books</span>`;
             html+=resBadge;
             html+=`</div>`;
 

@@ -65,8 +65,9 @@ def get_game_pks(date_str):
         r.raise_for_status()
         pks = [int(g["gamePk"])
                for d in r.json().get("dates", [])
-               for g in d.get("games", [])]
-        print(f"  📅  {date_str}: {len(pks)} games found: {pks}")
+               for g in d.get("games", [])
+               if g.get("status", {}).get("abstractGameState") == "Final"]
+        print(f"  📅  {date_str}: {len(pks)} final games found: {pks}")
         _game_pks_cache[date_str] = pks
         return pks
     except Exception as e:
