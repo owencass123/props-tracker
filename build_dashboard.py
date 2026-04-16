@@ -685,7 +685,12 @@ function buildMovTable(base){
 
 // ── combo table ───────────────────────────────────────────────────────────────
 function buildComboTable(base){
-  const movs = [{label:'In Favor',fn:r=>r.movFavor===true},{label:'Against',fn:r=>r.movFavor===false},{label:'Any',fn:()=>true}];
+  const movs = [
+    {label:'In Favor',    fn:r=>r.movFavor===true},
+    {label:'In Favor 10+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'Against',     fn:r=>r.movFavor===false},
+    {label:'Against 10+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=10},
+  ];
 
   // Positive EV section
   const posTs = [0,5,10,15,20,25];
