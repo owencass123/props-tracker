@@ -95,7 +95,7 @@
     <div style="margin-top:4px;font-size:12px;color:var(--sub)">MLB Strikeout Props — Win Rate Analysis</div>
   </div>
   <div style="margin-left:auto;text-align:right;">
-    <div class="badge" id="last-updated">Updated: 2026-04-15 19:37 CT</div>
+    <div class="badge" id="last-updated">Updated: 2026-04-15 19:41 CT</div>
   </div>
 </header>
 
@@ -333,23 +333,69 @@ function buildEvTable(base){
 
 // ── movement table ────────────────────────────────────────────────────────────
 function buildMovTable(base){
-  const cats = [
-    {label:'Any Movement',  fn:r=>r.movement!==null},
-    {label:'Moved In Favor',fn:r=>r.movFavor===true},
-    {label:'Moved Against', fn:r=>r.movFavor===false},
-    {label:'No Movement',   fn:r=>r.movement===0},
-    {label:'|Move| 1–5',    fn:r=>r.movement!==null&&Math.abs(r.movement)>=1&&Math.abs(r.movement)<=5},
-    {label:'|Move| 6–10',   fn:r=>r.movement!==null&&Math.abs(r.movement)>=6&&Math.abs(r.movement)<=10},
-    {label:'|Move| 11–20',  fn:r=>r.movement!==null&&Math.abs(r.movement)>=11&&Math.abs(r.movement)<=20},
-    {label:'|Move| 21+',    fn:r=>r.movement!==null&&Math.abs(r.movement)>=21},
+  const graded = base.filter(r=>r.result==='Win'||r.result==='Loss');
+
+  const ranges = [
+    {label:'Any',   lo:1,  hi:Infinity},
+    {label:'1–5',   lo:1,  hi:5},
+    {label:'6–10',  lo:6,  hi:10},
+    {label:'11–20', lo:11, hi:20},
+    {label:'21+',   lo:21, hi:Infinity},
   ];
-  let html='<table><thead><tr><th>Movement Category</th><th>Bets (graded)</th><th>Wins</th><th>Losses</th><th>Win Rate</th></tr></thead><tbody>';
-  cats.forEach(({label,fn})=>{
-    const rows = base.filter(r=>fn(r)&&(r.result==='Win'||r.result==='Loss'));
-    const {rate,wins,losses,n} = winRate(rows);
-    html+=`<tr><td>${label}</td><td>${n}</td><td class="win">${wins}</td><td class="loss">${losses}</td><td>${fmtPct(rate)}</td></tr>`;
+
+  function stats(arr){
+    const w=arr.filter(r=>r.result==='Win').length;
+    const l=arr.filter(r=>r.result==='Loss').length;
+    const n=w+l;
+    const rate=n>0?w/n*100:NaN;
+    return {w,l,n,rate};
+  }
+  function cell(arr){
+    const {w,l,n,rate}=stats(arr);
+    return n>0
+      ? `<td class="win">${w}</td><td class="loss">${l}</td><td>${fmtPct(rate)} <span style="color:var(--sub);font-size:11px">(${n})</span></td>`
+      : `<td>—</td><td>—</td><td>—</td>`;
+  }
+
+  const thS='padding:8px 12px;text-align:center;';
+  const sep=`<th style="padding:0 4px;color:var(--border)">|</th>`;
+  let html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;">
+    <thead><tr>
+      <th style="padding:8px 12px;text-align:left;">Movement</th>
+      <th style="${thS}" colspan="3">In Favor</th>${sep}
+      <th style="${thS}" colspan="3">Against</th>${sep}
+      <th style="${thS}" colspan="3">No Movement</th>
+    </tr>
+    <tr style="font-size:11px;color:var(--sub)">
+      <th></th>
+      <th style="${thS}">W</th><th style="${thS}">L</th><th style="${thS}">Win Rate</th><th style="padding:0 4px;color:var(--border)">|</th>
+      <th style="${thS}">W</th><th style="${thS}">L</th><th style="${thS}">Win Rate</th><th style="padding:0 4px;color:var(--border)">|</th>
+      <th style="${thS}">W</th><th style="${thS}">L</th><th style="${thS}">Win Rate</th>
+    </tr></thead><tbody>`;
+
+  const tdS='padding:7px 12px;text-align:center;';
+  const sepTd=`<td style="padding:0 4px;color:var(--border);text-align:center">|</td>`;
+
+  ranges.forEach(({label,lo,hi})=>{
+    const inRange = r=>r.movement!==null&&Math.abs(r.movement)>=lo&&Math.abs(r.movement)<=hi;
+    const favor  = graded.filter(r=>r.movFavor===true &&inRange(r));
+    const against= graded.filter(r=>r.movFavor===false&&inRange(r));
+    const none   = label==='Any' ? graded.filter(r=>r.movement===0||r.movement===null) : [];
+    html+=`<tr style="${label==='Any'?'border-bottom:2px solid var(--border)':''}">
+      <td style="padding:7px 12px;font-weight:${label==='Any'?700:400}">${label==='Any'?'All Ranges':label}</td>
+      ${cell(favor)}${sepTd}${cell(against)}${sepTd}${label==='Any'?cell(none):'<td>—</td><td>—</td><td>—</td>'}
+    </tr>`;
   });
-  html+='</tbody></table>';
+
+  // No movement row
+  const noMov = graded.filter(r=>r.movement===0||r.movement===null);
+  html+=`<tr>
+    <td style="padding:7px 12px">No Movement</td>
+    <td>—</td><td>—</td><td>—</td>${sepTd}<td>—</td><td>—</td><td>—</td>${sepTd}
+    ${cell(noMov)}
+  </tr>`;
+
+  html+='</tbody></table></div>';
   document.getElementById('mov-table').innerHTML=html;
 }
 
