@@ -757,60 +757,56 @@ function buildBookTable(base){
   const thStyle='padding:8px 12px;text-align:center;';
   const tdStyle='padding:7px 12px;text-align:center;';
 
-  let html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;">';
-  html+=`<thead><tr>
-    <th style="padding:8px 12px;text-align:left;">Sportsbook</th>
-    <th style="${thStyle}">Moved In Favor</th><th style="${thStyle}">W</th><th style="${thStyle}">L</th><th style="${thStyle}">Win Rate</th>
-    <th style="padding:8px 4px;color:var(--border)">|</th>
-    <th style="${thStyle}">Moved Against</th><th style="${thStyle}">W</th><th style="${thStyle}">L</th><th style="${thStyle}">Win Rate</th>
-    <th style="padding:8px 4px;color:var(--border)">|</th>
-    <th style="${thStyle}">No Movement</th><th style="${thStyle}">W</th><th style="${thStyle}">L</th><th style="${thStyle}">Win Rate</th>
-  </tr></thead><tbody>`;
+  const cols = [
+    {label:'Moved In Favor',     fn:r=>r.movFavor===true},
+    {label:'In Favor 10+',       fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'Moved Against',      fn:r=>r.movFavor===false},
+    {label:'Against 10+',        fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=10},
+  ];
 
-  bks.forEach(b=>{
-    const rows=enriched.filter(r=>r.book===b);
-
-    const favor  = rows.filter(r=>r.movFavor===true);
-    const against= rows.filter(r=>r.movFavor===false);
-    const none   = rows.filter(r=>r.movement===0||r.movement===null);
-
-    function stats(arr){
-      const w=arr.filter(r=>r.result==='Win').length;
-      const l=arr.filter(r=>r.result==='Loss').length;
-      const n=w+l;
-      const rate=n>0?w/n*100:NaN;
-      return {w,l,n,rate};
-    }
-
-    function cells(arr){
-      const {w,l,n,rate}=stats(arr);
-      const rateHtml=n>0?fmtPct(rate):`<span class="n">—</span>`;
-      return `<td style="${tdStyle}">${n}</td><td style="${tdStyle}" class="win">${w}</td><td style="${tdStyle}" class="loss">${l}</td><td style="${tdStyle}">${rateHtml}</td>`;
-    }
-
-    const sep=`<td style="padding:0 4px;color:var(--border);text-align:center">|</td>`;
-    html+=`<tr>
-      <td style="padding:7px 12px;font-weight:600">${b}</td>
-      ${cells(favor)}${sep}${cells(against)}${sep}${cells(none)}
-    </tr>`;
-  });
-
-  // Totals row
-  const favor  = enriched.filter(r=>r.movFavor===true);
-  const against= enriched.filter(r=>r.movFavor===false);
-  const none   = enriched.filter(r=>r.movement===0||r.movement===null);
-  function totCells(arr){
+  function stats(arr){
     const w=arr.filter(r=>r.result==='Win').length;
     const l=arr.filter(r=>r.result==='Loss').length;
     const n=w+l;
     const rate=n>0?w/n*100:NaN;
-    return `<td style="${tdStyle};font-weight:600">${n}</td><td style="${tdStyle}" class="win">${w}</td><td style="${tdStyle}" class="loss">${l}</td><td style="${tdStyle}">${n>0?fmtPct(rate):'—'}</td>`;
+    return {w,l,n,rate};
   }
-  const sep=`<td style="padding:0 4px;color:var(--border);text-align:center">|</td>`;
+  function cells(arr,bold){
+    const {w,l,n,rate}=stats(arr);
+    const fw=bold?';font-weight:600':'';
+    const rateHtml=n>0?fmtPct(rate):`<span class="n">—</span>`;
+    return `<td style="${tdStyle}${fw}">${n}</td><td style="${tdStyle}" class="win">${w}</td><td style="${tdStyle}" class="loss">${l}</td><td style="${tdStyle}${fw}">${rateHtml}</td>`;
+  }
+
+  const sep=`<td style="padding:0 8px;color:var(--border);text-align:center">|</td>`;
+
+  let html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;">';
+  html+=`<thead><tr><th style="padding:8px 12px;text-align:left;">Sportsbook</th>`;
+  cols.forEach((c,i)=>{
+    if(i===2) html+=sep;
+    html+=`<th style="${thStyle}">${c.label}</th><th style="${thStyle}">W</th><th style="${thStyle}">L</th><th style="${thStyle}">Win Rate</th>`;
+  });
+  html+=`</tr></thead><tbody>`;
+
+  bks.forEach(b=>{
+    const rows=enriched.filter(r=>r.book===b);
+    html+=`<tr><td style="padding:7px 12px;font-weight:600">${b}</td>`;
+    cols.forEach((c,i)=>{
+      if(i===2) html+=sep;
+      html+=cells(rows.filter(c.fn));
+    });
+    html+=`</tr>`;
+  });
+
+  // Totals row
+  const sepTd=`<td style="padding:0 8px;color:var(--border);text-align:center">|</td>`;
   html+=`<tr style="border-top:2px solid var(--border)">
-    <td style="padding:7px 12px;font-weight:700;color:var(--sub);font-size:11px;text-transform:uppercase">All Books</td>
-    ${totCells(favor)}${sep}${totCells(against)}${sep}${totCells(none)}
-  </tr>`;
+    <td style="padding:7px 12px;font-weight:700;color:var(--sub);font-size:11px;text-transform:uppercase">All Books</td>`;
+  cols.forEach((c,i)=>{
+    if(i===2) html+=sepTd;
+    html+=cells(enriched.filter(c.fn),true);
+  });
+  html+=`</tr>`;
 
   html+='</tbody></table></div>';
   document.getElementById('book-table').innerHTML=html;
