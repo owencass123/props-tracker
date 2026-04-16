@@ -215,9 +215,11 @@ def main():
         if col not in df.columns:
             df[col] = ""
 
-    # Only process rows with a valid date and no result yet
+    # Process rows with no result yet, OR where Actual Ks = 0 (may have been
+    # written before the game started and need re-checking once it's Final)
     needs_update = df[
-        df["Over Result"].fillna("").isin(["", "NoStat"]) &
+        (df["Over Result"].fillna("").isin(["", "NoStat"]) |
+         (df["Actual Ks"].fillna("") == "0")) &
         df["Date"].notna() &
         (df["Date"].str.strip() != "")
     ].index
