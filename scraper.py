@@ -8,7 +8,7 @@ import os
 import re
 import time
 import csv
-from datetime import date
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from selenium import webdriver
@@ -55,7 +55,10 @@ CSV_COLUMNS = [
     "Time", "Date", "Scrape Date",
 ]
 
-TODAY = date.today().strftime("%m/%d/%Y")
+# Use Central Time for game-date logic so the date is correct even when
+# GitHub Actions runs after midnight UTC (late CT games cross midnight UTC).
+_CT = timezone(timedelta(hours=-5))   # CDT = UTC-5 (Apr–Nov)
+TODAY = datetime.now(_CT).strftime("%m/%d/%Y")
 
 
 # ── driver setup ──────────────────────────────────────────────────────────────
@@ -420,9 +423,10 @@ def process_cell(driver, cell, player, matchup, book, rows_out):
             return prefix + s
 
         # Extract the date embedded in the panel timestamp (e.g. "04/13/2026 05:20 PM").
-        # If it belongs to a future date, skip this entry entirely.
+        # Only include entries whose date matches TODAY. If the timestamp has no
+        # parseable date, skip it — we can't confirm it belongs to today.
         panel_date = normalize_date(ts)
-        if panel_date and panel_date > TODAY:
+        if panel_date != TODAY:
             continue
 
         rows_out.append({
