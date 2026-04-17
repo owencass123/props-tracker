@@ -114,7 +114,7 @@ def find_ks(date_str, player_name):
 
     dates_to_try = [
         (base_date + timedelta(days=offset)).strftime("%m/%d/%Y")
-        for offset in (-1, 0, 1)
+        for offset in (-1, 0)
     ]
 
     for search_date in dates_to_try:
@@ -215,11 +215,9 @@ def main():
         if col not in df.columns:
             df[col] = ""
 
-    # Process rows with no result yet, OR where Actual Ks = 0 (may have been
-    # written before the game started and need re-checking once it's Final)
+    # Only process rows with no result yet (Final filter prevents false 0s)
     needs_update = df[
-        (df["Over Result"].fillna("").isin(["", "NoStat"]) |
-         (df["Actual Ks"].fillna("") == "0")) &
+        df["Over Result"].fillna("").isin(["", "NoStat"]) &
         df["Date"].notna() &
         (df["Date"].str.strip() != "")
     ].index
