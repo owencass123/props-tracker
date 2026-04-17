@@ -971,13 +971,21 @@ function buildPlayerTable(base){
             html+=`<span class="pc-stat-sep">|</span>`;
             html+=`<span class="pc-stat">Actual: <b>${ksStr}</b></span>`;
             html+=`<span class="pc-stat-sep">|</span>`;
-            html+=`<span class="pc-stat">EV: <b>${fmtAvgEv(cr.ev)}</b></span>`;
+            const evVal=cr.ev;
+            const evColor=evVal===null?'var(--text)':evVal>=5?'var(--accent)':evVal>0?'#86efac':evVal>=-5?'#fbbf24':'var(--red)';
+            const evHtml=`<b style="color:${evColor};font-size:14px">${fmtAvgEv(cr.ev)}</b>`;
+
+            const mov=cr.movement;
+            const movColor=mov===null?'var(--sub)':cr.movFavor===true?'var(--accent)':cr.movFavor===false?'var(--red)':'var(--sub)';
+            const movHtml=`<b style="color:${movColor};font-size:14px">${fmtAvgMov(cr.movement)}</b>`;
+
+            html+=`<span class="pc-stat">EV: ${evHtml}</span>`;
             html+=`<span class="pc-stat-sep">|</span>`;
             html+=`<span class="pc-stat">Open: <b>${fmtAvgOdds(cr.firstOdds)}</b></span>`;
             html+=`<span class="pc-stat-sep">|</span>`;
             html+=`<span class="pc-stat">Close: <b>${fmtAvgOdds(cr.lastOdds)}</b></span>`;
             html+=`<span class="pc-stat-sep">|</span>`;
-            html+=`<span class="pc-stat">Move: <b>${fmtAvgMov(cr.movement)}</b></span>`;
+            html+=`<span class="pc-stat">Move: ${movHtml}</span>`;
             html+=`<span class="pc-stat-sep">|</span>`;
             html+=`<span class="pc-stat"><b>${cr.bookCount}</b> books</span>`;
             html+=resBadge;
