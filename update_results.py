@@ -210,6 +210,37 @@ def main():
 
     print(f"Loaded {len(df)} rows from {DATA_FILE}")
 
+    # ── Remove cross-day duplicates ───────────────────────────────────────────
+    # If a player has a Win/Loss/Push on date D, remove their rows on date D+1.
+    # (NoStat/empty on D means their game hadn't been played yet — keep D+1.)
+    from datetime import datetime as _dt
+    def _parse_date(s):
+        try: return _dt.strptime(str(s).strip(), "%m/%d/%Y").date()
+        except: return None
+
+    graded_results = {"Win", "Loss", "Push"}
+    # Build set of (player, date) that have a graded result
+    graded_set = set()
+    for _, row in df.iterrows():
+        if str(row.get("Over Result", "")).strip() in graded_results:
+            graded_set.add((str(row.get("Player", "")).strip(), str(row.get("Date", "")).strip()))
+
+    # Remove rows where (player, previous_day) is in graded_set
+    def _is_duplicate(row):
+        d = _parse_date(row.get("Date", ""))
+        if d is None:
+            return False
+        prev = (d - timedelta(days=1)).strftime("%m/%d/%Y")
+        return (str(row.get("Player", "")).strip(), prev) in graded_set
+
+    before = len(df)
+    df = df[~df.apply(_is_duplicate, axis=1)].reset_index(drop=True)
+    removed = before - len(df)
+    if removed:
+        print(f"🧹 Removed {removed} duplicate rows (players graded previous day)")
+    else:
+        print("🧹 No cross-day duplicates found")
+
     # Add result columns if missing
     for col in ("Actual Ks", "Over Result", "Under Result"):
         if col not in df.columns:
