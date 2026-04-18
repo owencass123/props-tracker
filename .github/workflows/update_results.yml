@@ -1,6 +1,9 @@
 name: Update Results Only
 
 on:
+  # midnight CT (CDT = UTC-5) = 05 UTC — finalizes late-game Ks without scraping
+  schedule:
+    - cron: '0 5 * * *'
   workflow_dispatch:
 
 permissions:
