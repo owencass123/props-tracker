@@ -859,6 +859,14 @@ function gameTimeTo24h(t){
   if(ap==='AM'&&h===12) h=0;
   return String(h).padStart(2,'0')+':'+min;
 }
+function fmt12h(t){
+  // Normalise any stored time to 12h CT display (e.g. "01:10 PM" → "1:10 PM")
+  if(!t||t==='__') return '—';
+  const m=t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if(!m) return t;
+  let h=parseInt(m[1]); const min=m[2]; const ap=m[3].toUpperCase();
+  return `${h}:${min} ${ap} CT`;
+}
 function buildRawTable(rows){
   const MAX=300;
   // Sort: newest date first → game time ascending → player ascending
@@ -1207,6 +1215,7 @@ function buildUnitsTable(base){
       html+=`<table style="width:100%;border-collapse:collapse;font-size:13px">`;
       html+=`<thead><tr style="border-bottom:1px solid var(--border);color:var(--sub);font-size:11px;text-transform:uppercase">
         <th style="padding:6px 10px;text-align:left">Player</th>
+        <th style="padding:6px 10px;text-align:center">Time (CT)</th>
         <th style="padding:6px 10px;text-align:center">Side</th>
         <th style="padding:6px 10px;text-align:center">Line</th>
         <th style="padding:6px 10px;text-align:center">EV%</th>
@@ -1236,6 +1245,7 @@ function buildUnitsTable(base){
 
         html+=`<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:7px 10px;font-weight:600">${displayName}</td>
+          <td style="padding:7px 10px;text-align:center;color:var(--sub);font-size:12px">${fmt12h(r.gameTime||r.time||'')}</td>
           <td style="padding:7px 10px;text-align:center"><span class="side-pill ${sideClass}">${r.side}</span></td>
           <td style="padding:7px 10px;text-align:center">${lineStr}</td>
           <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${r.ev!=null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—'}</b></td>
@@ -1327,7 +1337,7 @@ def main():
     book_records  = build_records(df)
     consensus     = build_consensus_records(book_records)
 
-    updated = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %H:%M CT")
+    updated = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %I:%M %p CT").replace(" 0", " ")
     consensus_json  = json.dumps(consensus,    default=str)
     book_json       = json.dumps(book_records, default=str)
 
