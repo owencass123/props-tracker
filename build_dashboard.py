@@ -450,6 +450,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="tab" onclick="showTab('combo')">Combined</button>
     <button class="tab" onclick="showTab('book')">By Sportsbook</button>
     <button class="tab" onclick="showTab('player')">By Player</button>
+    <button class="tab" onclick="showTab('picks')">Picks</button>
     <button class="tab" onclick="showTab('raw')">Raw Data</button>
   </div>
 
@@ -485,6 +486,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div id="tab-player" class="tab-panel section">
     <h2>By Player</h2>
     <div id="player-content"></div>
+  </div>
+
+  <!-- Picks -->
+  <div id="tab-picks" class="tab-panel section">
+    <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— EV ≥ 10% &amp; moved in favor</span></h2>
+    <div id="picks-content"></div>
   </div>
 
   <!-- Raw Data -->
@@ -1020,6 +1027,20 @@ function buildPlayerTable(base){
   document.getElementById('player-content').innerHTML=html;
 }
 
+function buildPicksTable(base){
+  // Only show sides where EV >= 10% AND moved in favor
+  const picks = base.filter(r => r.ev !== null && r.ev >= 10 && r.movFavor === true);
+  if(!picks.length){
+    document.getElementById('picks-content').innerHTML='<p style="color:var(--sub);text-align:center;padding:20px">No picks match the criteria (EV ≥ 10% + moved in favor).</p>';
+    return;
+  }
+  // Reuse buildPlayerTable logic with filtered data, writing to picks-content
+  const saved = document.getElementById('player-content').innerHTML;
+  buildPlayerTable(picks);
+  document.getElementById('picks-content').innerHTML = document.getElementById('player-content').innerHTML;
+  document.getElementById('player-content').innerHTML = saved;
+}
+
 function togglePD(uid){
   const el=document.getElementById(uid);
   const arrow=document.getElementById(uid+'_arrow');
@@ -1056,6 +1077,7 @@ function refresh(){
   buildBookTable(filtered);
   const display=getFilteredForDisplay();
   buildPlayerTable(display);
+  buildPicksTable(display);
   buildRawTable(display);
 }
 
