@@ -95,7 +95,7 @@
     <div style="margin-top:4px;font-size:12px;color:var(--sub)">MLB Strikeout Props — Win Rate Analysis</div>
   </div>
   <div style="margin-left:auto;text-align:right;">
-    <div class="badge" id="last-updated">Updated: 2026-04-19 4:30 PM CT</div>
+    <div class="badge" id="last-updated">Updated: 2026-04-19 4:53 PM CT</div>
   </div>
 </header>
 
@@ -151,11 +151,10 @@
       </div>
     </div>
     <div class="cards" id="summary-cards">
-      <div class="card"><div class="label">Total Bets</div><div class="value blue" id="s-total">—</div></div>
-      <div class="card"><div class="label">Wins</div><div class="value green" id="s-wins">—</div></div>
-      <div class="card"><div class="label">Losses</div><div class="value" style="color:var(--red)" id="s-losses">—</div></div>
-      <div class="card"><div class="label">Win Rate</div><div class="value green" id="s-winrate">—</div></div>
-      <div class="card"><div class="label">Avg EV%</div><div class="value yellow" id="s-ev">—</div></div>
+      <div class="card"><div class="label">Players Tracked</div><div class="value blue" id="s-total">—</div></div>
+      <div class="card"><div class="label">Picks W</div><div class="value green" id="s-wins">—</div></div>
+      <div class="card"><div class="label">Picks L</div><div class="value" style="color:var(--red)" id="s-losses">—</div></div>
+      <div class="card"><div class="label">Picks Win%</div><div class="value green" id="s-winrate">—</div></div>
       <div class="card"><div class="label">Picks $</div><div class="value" id="s-pnl">—</div></div>
     </div>
   </div>
@@ -309,19 +308,36 @@ function getFiltered(){
 
 // ── summary cards ─────────────────────────────────────────────────────────────
 function updateCards(rows){
-  const {rate,wins,losses,n} = winRate(rows);
-  const evVals = rows.map(r=>r.ev).filter(v=>v!==null&&!isNaN(v));
-  const avgEv  = evVals.length ? evVals.reduce((a,b)=>a+b,0)/evVals.length : NaN;
-  document.getElementById('s-total').textContent   = rows.length;
+  // Players tracked = unique player/date combos in the full dataset (both sides count as 1)
+  const uniquePlayers = new Set(RAW.map(r=>r.player+'|'+r.date)).size;
+  document.getElementById('s-total').textContent = uniquePlayers;
+
+  // Picks stats — all qualifying unit plays across all tiers
+  const used = new Set();
+  const allPicks = [];
+  // 2-unit first (de-dupe same as buildUnitsTable)
+  RAW.forEach(r=>{
+    const key=r.player+'|'+r.date+'|'+r.side;
+    if(classifyUnits(r)===2 && !used.has(key)){ used.add(key); allPicks.push({...r,units:2}); }
+  });
+  RAW.forEach(r=>{
+    const key=r.player+'|'+r.date+'|'+r.side;
+    if(classifyUnits(r)===1 && !used.has(key)){ used.add(key); allPicks.push({...r,units:1}); }
+  });
+
+  const graded = allPicks.filter(r=>r.result==='Win'||r.result==='Loss');
+  const wins   = graded.filter(r=>r.result==='Win').length;
+  const losses = graded.length - wins;
+  const rate   = graded.length ? wins/graded.length*100 : NaN;
+  const totalPnl = graded.reduce((sum,r)=>sum+(calcPnl(r.result,r.lastOdds||r.firstOdds,r.units)||0),0);
+
   document.getElementById('s-wins').textContent    = wins;
   document.getElementById('s-losses').textContent  = losses;
   document.getElementById('s-winrate').textContent = isNaN(rate)?'—':rate.toFixed(1)+'%';
-  document.getElementById('s-ev').textContent      = isNaN(avgEv)?'—':(avgEv>=0?'+':'')+avgEv.toFixed(1)+'%';
-  // Picks P&L (all qualifying unit plays across all tiers)
-  const allPicks = RAW.filter(r=>classifyUnits(r)>0&&(r.result==='Win'||r.result==='Loss'));
-  const totalPnl = allPicks.reduce((sum,r)=>sum+(calcPnl(r.result,r.lastOdds||r.firstOdds,classifyUnits(r))||0),0);
+  document.getElementById('s-winrate').style.color = rate>=55?'var(--accent)':rate>=45?'var(--text)':'var(--red)';
+
   const pnlEl = document.getElementById('s-pnl');
-  pnlEl.textContent = allPicks.length ? (totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(0) : '—';
+  pnlEl.textContent = graded.length ? (totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(0) : '—';
   pnlEl.style.color = totalPnl>0?'var(--accent)':totalPnl<0?'var(--red)':'var(--text)';
 }
 
