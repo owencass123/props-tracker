@@ -457,6 +457,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="card"><div class="label">Losses</div><div class="value" style="color:var(--red)" id="s-losses">—</div></div>
       <div class="card"><div class="label">Win Rate</div><div class="value green" id="s-winrate">—</div></div>
       <div class="card"><div class="label">Avg EV%</div><div class="value yellow" id="s-ev">—</div></div>
+      <div class="card"><div class="label">Picks $</div><div class="value" id="s-pnl">—</div></div>
     </div>
   </div>
 
@@ -468,7 +469,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="tab" onclick="showTab('book')">By Sportsbook</button>
     <button class="tab" onclick="showTab('player')">By Player</button>
     <button class="tab" onclick="showTab('picks')">Picks</button>
-    <button class="tab" onclick="showTab('units')">Units</button>
     <button class="tab" onclick="showTab('raw')">Raw Data</button>
   </div>
 
@@ -508,13 +508,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Picks -->
   <div id="tab-picks" class="tab-panel section">
-    <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— EV ≥ 10% &amp; moved in favor</span></h2>
-    <div id="picks-content"></div>
-  </div>
-
-  <!-- Units -->
-  <div id="tab-units" class="tab-panel section">
-    <h2>Units Tracker <span style="font-size:13px;font-weight:400;color:var(--sub)">— 1 unit = $100</span></h2>
+    <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— 1 unit = $100 risked</span></h2>
     <div id="units-summary"></div>
     <div id="units-content" style="margin-top:24px"></div>
   </div>
@@ -624,6 +618,12 @@ function updateCards(rows){
   document.getElementById('s-losses').textContent  = losses;
   document.getElementById('s-winrate').textContent = isNaN(rate)?'—':rate.toFixed(1)+'%';
   document.getElementById('s-ev').textContent      = isNaN(avgEv)?'—':(avgEv>=0?'+':'')+avgEv.toFixed(1)+'%';
+  // Picks P&L (all qualifying unit plays across all tiers)
+  const allPicks = RAW.filter(r=>classifyUnits(r)>0&&(r.result==='Win'||r.result==='Loss'));
+  const totalPnl = allPicks.reduce((sum,r)=>sum+(calcPnl(r.result,r.lastOdds||r.firstOdds,classifyUnits(r))||0),0);
+  const pnlEl = document.getElementById('s-pnl');
+  pnlEl.textContent = allPicks.length ? (totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(0) : '—';
+  pnlEl.style.color = totalPnl>0?'var(--accent)':totalPnl<0?'var(--red)':'var(--text)';
 }
 
 // ── EV% table ─────────────────────────────────────────────────────────────────
@@ -1052,11 +1052,6 @@ function buildPlayerTable(base, containerId='player-content'){
   document.getElementById(containerId).innerHTML=html;
 }
 
-function buildPicksTable(base){
-  const picks = base.filter(r => r.ev !== null && r.ev >= 10 && r.movFavor === true);
-  buildPlayerTable(picks, 'picks-content');
-}
-
 // ── units tracker ─────────────────────────────────────────────────────────────
 function classifyUnits(r){
   // Returns 2, 1, or 0
@@ -1127,7 +1122,7 @@ function buildUnitsTable(base){
       <th style="padding:10px 14px;text-align:left">Tier</th>
       <th style="${thS}">Criteria</th>
       <th style="${thS}">W</th><th style="${thS}">L</th><th style="${thS}">Win%</th>
-      <th style="${thS}">Pending</th><th style="${thS}">P&L</th>
+      <th style="${thS}">Pending</th><th style="${thS}">$</th>
     </tr></thead><tbody>`;
 
   let totalWins=0, totalLosses=0, totalPnl=0, totalPending=0;
@@ -1220,7 +1215,7 @@ function buildUnitsTable(base){
         <th style="padding:6px 10px;text-align:center">Units</th>
         <th style="padding:6px 10px;text-align:center">Actual Ks</th>
         <th style="padding:6px 10px;text-align:center">Result</th>
-        <th style="padding:6px 10px;text-align:center">P&L</th>
+        <th style="padding:6px 10px;text-align:center">$</th>
       </tr></thead><tbody>`;
 
       recs.forEach(r=>{
@@ -1299,7 +1294,6 @@ function refresh(){
   buildBookTable(filtered);
   const display=getFilteredForDisplay();
   buildPlayerTable(display);
-  buildPicksTable(display);
   buildUnitsTable(display);
   buildRawTable(display);
 }
