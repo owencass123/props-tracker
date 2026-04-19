@@ -468,6 +468,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="tab" onclick="showTab('book')">By Sportsbook</button>
     <button class="tab" onclick="showTab('player')">By Player</button>
     <button class="tab" onclick="showTab('picks')">Picks</button>
+    <button class="tab" onclick="showTab('units')">Units</button>
     <button class="tab" onclick="showTab('raw')">Raw Data</button>
   </div>
 
@@ -509,6 +510,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div id="tab-picks" class="tab-panel section">
     <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— EV ≥ 10% &amp; moved in favor</span></h2>
     <div id="picks-content"></div>
+  </div>
+
+  <!-- Units -->
+  <div id="tab-units" class="tab-panel section">
+    <h2>Units Tracker <span style="font-size:13px;font-weight:400;color:var(--sub)">— 1 unit = $100</span></h2>
+    <div id="units-summary"></div>
+    <div id="units-content" style="margin-top:24px"></div>
   </div>
 
   <!-- Raw Data -->
@@ -1049,6 +1057,212 @@ function buildPicksTable(base){
   buildPlayerTable(picks, 'picks-content');
 }
 
+// ── units tracker ─────────────────────────────────────────────────────────────
+function classifyUnits(r){
+  // Returns 2, 1, or 0
+  if(r.ev===null||r.movFavor===null) return 0;
+  const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
+  // 2 units: EV >= 25% AND moved in favor by 10+
+  if(r.ev>=25 && r.movFavor===true && absMov>=10) return 2;
+  // 1 unit: (EV >= 15% AND moved in favor by 10+) OR (EV >= 20% AND moved in favor any)
+  if((r.ev>=15 && r.movFavor===true && absMov>=10) || (r.ev>=20 && r.movFavor===true)) return 1;
+  return 0;
+}
+
+function calcPnl(result, odds, units){
+  // Returns profit/loss in dollars
+  if(result!=='Win'&&result!=='Loss') return null;
+  const stake = units * 100;
+  if(result==='Win'){
+    return odds>0 ? (stake * odds/100) : (stake * 100/Math.abs(odds));
+  } else {
+    return -stake;
+  }
+}
+
+function buildUnitsTable(base){
+  const UNIT_VAL = 100;
+
+  const tiers = [
+    {
+      label: '2 Units',
+      desc:  'EV ≥ 25% + moved in favor by 10+',
+      units: 2,
+      fn:    r => classifyUnits(r)===2,
+    },
+    {
+      label: '1 Unit',
+      desc:  'EV ≥ 15% + moved in favor by 10+, or EV ≥ 20% + moved in favor',
+      units: 1,
+      fn:    r => classifyUnits(r)===1,
+    },
+  ];
+
+  // For each tier, collect qualifying records (de-duped: 2-unit players excluded from 1-unit)
+  const used = new Set();
+  tiers.forEach(t=>{
+    t.recs = base.filter(r=>{
+      const key = r.player+'|'+r.date+'|'+r.side;
+      if(!t.fn(r)) return false;
+      if(used.has(key)) return false;
+      used.add(key);
+      return true;
+    });
+  });
+
+  // ── Summary table ────────────────────────────────────────────────────────────
+  function tierStats(recs, unitSize){
+    const graded = recs.filter(r=>r.result==='Win'||r.result==='Loss');
+    const wins   = graded.filter(r=>r.result==='Win').length;
+    const losses = graded.length - wins;
+    const pnl    = graded.reduce((sum,r)=>sum + (calcPnl(r.result, r.lastOdds||r.firstOdds, unitSize)||0), 0);
+    return {wins, losses, n:graded.length, pnl, pending: recs.length - graded.length};
+  }
+
+  const thS='padding:10px 14px;text-align:center;';
+  const tdS='padding:9px 14px;text-align:center;';
+
+  let sumHtml=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead><tr style="border-bottom:2px solid var(--border)">
+      <th style="padding:10px 14px;text-align:left">Tier</th>
+      <th style="${thS}">Criteria</th>
+      <th style="${thS}">W</th><th style="${thS}">L</th><th style="${thS}">Win%</th>
+      <th style="${thS}">Pending</th><th style="${thS}">P&L</th>
+    </tr></thead><tbody>`;
+
+  let totalWins=0, totalLosses=0, totalPnl=0, totalPending=0;
+  tiers.forEach(t=>{
+    const s = tierStats(t.recs, t.units);
+    totalWins+=s.wins; totalLosses+=s.losses; totalPnl+=s.pnl; totalPending+=s.pending;
+    const winPct = s.n>0 ? (s.wins/s.n*100).toFixed(1)+'%' : '—';
+    const pnlColor = s.pnl>0?'var(--accent)':s.pnl<0?'var(--red)':'var(--text)';
+    const pnlStr = s.n>0 ? `<b style="color:${pnlColor}">${s.pnl>=0?'+':''}$${s.pnl.toFixed(0)}</b>` : '—';
+    sumHtml+=`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:9px 14px;font-weight:700">${t.label}</td>
+      <td style="${tdS};font-size:12px;color:var(--sub)">${t.desc}</td>
+      <td style="${tdS}" class="win">${s.wins}</td>
+      <td style="${tdS}" class="loss">${s.losses}</td>
+      <td style="${tdS}">${winPct}</td>
+      <td style="${tdS};color:var(--warn)">${s.pending}</td>
+      <td style="${tdS}">${pnlStr}</td>
+    </tr>`;
+  });
+
+  // Totals row
+  const totN = totalWins+totalLosses;
+  const totPct = totN>0?(totalWins/totN*100).toFixed(1)+'%':'—';
+  const totColor = totalPnl>0?'var(--accent)':totalPnl<0?'var(--red)':'var(--text)';
+  sumHtml+=`<tr style="border-top:2px solid var(--border);background:#1e2130">
+    <td style="padding:9px 14px;font-weight:700;font-size:13px">All Units</td>
+    <td style="${tdS};color:var(--sub);font-size:12px">Combined</td>
+    <td style="${tdS};font-weight:700" class="win">${totalWins}</td>
+    <td style="${tdS};font-weight:700" class="loss">${totalLosses}</td>
+    <td style="${tdS};font-weight:700">${totPct}</td>
+    <td style="${tdS};color:var(--warn)">${totalPending}</td>
+    <td style="${tdS}"><b style="color:${totColor};font-size:15px">${totalPnl>=0?'+':''}$${totalPnl.toFixed(0)}</b></td>
+  </tr>`;
+  sumHtml+='</tbody></table></div>';
+  document.getElementById('units-summary').innerHTML=sumHtml;
+
+  // ── Per-tier player lists ─────────────────────────────────────────────────────
+  let html='';
+
+  // Get sorted unique dates (newest first)
+  const allDates=[...new Set(base.map(r=>r.date))].sort((a,b)=>parseDate(b)-parseDate(a));
+  const newestDate = allDates[0]||'';
+
+  tiers.forEach(t=>{
+    if(!t.recs.length){ html+=`<div style="margin-bottom:20px"><h3 style="color:var(--sub)">${t.label} — no qualifying plays</h3></div>`; return; }
+
+    html+=`<div style="margin-bottom:28px">`;
+    html+=`<h3 style="margin-bottom:10px;font-size:15px">${t.label} <span style="font-weight:400;color:var(--sub);font-size:12px">${t.desc}</span></h3>`;
+
+    // Group by date
+    const byDate={};
+    t.recs.forEach(r=>{ (byDate[r.date]=byDate[r.date]||[]).push(r); });
+
+    allDates.forEach(date=>{
+      const recs=byDate[date];
+      if(!recs||!recs.length) return;
+
+      const isToday = date===newestDate;
+      const dgId=('units_'+t.units+'_'+date).replace(/[^a-zA-Z0-9]/g,'_');
+      const graded=recs.filter(r=>r.result==='Win'||r.result==='Loss');
+      const wins=graded.filter(r=>r.result==='Win').length;
+      const pnl=graded.reduce((sum,r)=>sum+(calcPnl(r.result,r.lastOdds||r.firstOdds,t.units)||0),0);
+      const pnlStr=graded.length?`${pnl>=0?'+':''}$${pnl.toFixed(0)}`:'Pending';
+      const pnlColor=graded.length?(pnl>0?'var(--accent)':pnl<0?'var(--red)':'var(--text)'):'var(--warn)';
+
+      const [mo,dy,yr]=date.split('/');
+      const dateLabel=`${mo}/${dy}/${yr}`;
+
+      html+=`<div class="date-group${isToday?' open':''}" id="${dgId}">`;
+      html+=`<div class="date-group-hdr" onclick="toggleDG('${dgId}')">`;
+      html+=`<span class="date-group-title">${dateLabel}</span>`;
+      html+=`<span style="display:flex;gap:16px;align-items:center">`;
+      html+=`<span style="font-size:12px;color:var(--sub)">${graded.length}/${recs.length} graded · ${graded.length?wins+'-'+(graded.length-wins):'—'}</span>`;
+      html+=`<span style="font-size:12px;font-weight:700;color:${pnlColor}">${pnlStr}</span>`;
+      html+=`</span>`;
+      html+=`<span class="date-group-arrow">▶</span>`;
+      html+=`</div><div class="date-group-body">`;
+
+      // Sort by game time
+      recs.sort((a,b)=>gameTimeTo24h(a.time||'').localeCompare(gameTimeTo24h(b.time||'')));
+
+      html+=`<table style="width:100%;border-collapse:collapse;font-size:13px">`;
+      html+=`<thead><tr style="border-bottom:1px solid var(--border);color:var(--sub);font-size:11px;text-transform:uppercase">
+        <th style="padding:6px 10px;text-align:left">Player</th>
+        <th style="padding:6px 10px;text-align:center">Side</th>
+        <th style="padding:6px 10px;text-align:center">Line</th>
+        <th style="padding:6px 10px;text-align:center">EV%</th>
+        <th style="padding:6px 10px;text-align:center">Close Odds</th>
+        <th style="padding:6px 10px;text-align:center">Move</th>
+        <th style="padding:6px 10px;text-align:center">Units</th>
+        <th style="padding:6px 10px;text-align:center">Actual Ks</th>
+        <th style="padding:6px 10px;text-align:center">Result</th>
+        <th style="padding:6px 10px;text-align:center">P&L</th>
+      </tr></thead><tbody>`;
+
+      recs.forEach(r=>{
+        const displayName=r.player.replace(/\\s*\\([^)]*\\)/g,'').trim();
+        const sideClass=r.side==='Over'?'over':'under';
+        const evColor=r.ev>=25?'var(--accent)':r.ev>=15?'#86efac':'#fbbf24';
+        const movColor=r.movFavor===true?'var(--accent)':'var(--red)';
+        const closeOdds=r.lastOdds!=null?fmtOdds(r.lastOdds):'—';
+        const pnl=calcPnl(r.result,r.lastOdds||r.firstOdds,t.units);
+        const pnlColor=pnl===null?'var(--sub)':pnl>0?'var(--accent)':pnl<0?'var(--red)':'var(--text)';
+        const pnlStr=pnl===null?'—':`${pnl>=0?'+':''}$${pnl.toFixed(0)}`;
+        const lineStr=r.line!=null?(r.side==='Over'?'o':'u')+r.line:'—';
+
+        let resBadge='<span style="color:var(--warn)">Pending</span>';
+        if(r.result==='Win')       resBadge='<span class="win">Win ✓</span>';
+        else if(r.result==='Loss') resBadge='<span class="loss">Loss ✗</span>';
+        else if(r.result==='Push') resBadge='<span style="color:var(--warn)">Push</span>';
+
+        html+=`<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:7px 10px;font-weight:600">${displayName}</td>
+          <td style="padding:7px 10px;text-align:center"><span class="side-pill ${sideClass}">${r.side}</span></td>
+          <td style="padding:7px 10px;text-align:center">${lineStr}</td>
+          <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${r.ev!=null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—'}</b></td>
+          <td style="padding:7px 10px;text-align:center"><b>${closeOdds}</b></td>
+          <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${r.movement!=null?(r.movement>=0?'+':'')+Math.round(r.movement):'—'}</b></td>
+          <td style="padding:7px 10px;text-align:center;font-weight:700">${t.units}u</td>
+          <td style="padding:7px 10px;text-align:center">${r.actualKs!=null?r.actualKs+' K':'—'}</td>
+          <td style="padding:7px 10px;text-align:center">${resBadge}</td>
+          <td style="padding:7px 10px;text-align:center;font-weight:700"><span style="color:${pnlColor}">${pnlStr}</span></td>
+        </tr>`;
+      });
+
+      html+=`</tbody></table></div></div>`;
+    });
+
+    html+=`</div>`;
+  });
+
+  if(!html) html='<p style="color:var(--sub);text-align:center;padding:20px">No qualifying plays found.</p>';
+  document.getElementById('units-content').innerHTML=html;
+}
+
 function togglePD(uid){
   const el=document.getElementById(uid);
   const arrow=document.getElementById(uid+'_arrow');
@@ -1086,6 +1300,7 @@ function refresh(){
   const display=getFilteredForDisplay();
   buildPlayerTable(display);
   buildPicksTable(display);
+  buildUnitsTable(display);
   buildRawTable(display);
 }
 
