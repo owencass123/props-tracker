@@ -196,6 +196,23 @@ def _avg(vals):
     v = [x for x in vals if x is not None and not (isinstance(x, float) and np.isnan(x))]
     return sum(v) / len(v) if v else None
 
+def _american_to_decimal(o):
+    """American odds → decimal multiplier (profit per unit)."""
+    if o is None: return None
+    return (o / 100) if o > 0 else (100 / abs(o))
+
+def _decimal_to_american(d):
+    """Decimal multiplier → American odds (rounded to int)."""
+    if d is None: return None
+    if d >= 1: return round(d * 100)
+    return round(-100 / d)
+
+def _avg_odds(vals):
+    """Average a list of American odds by converting through decimal first."""
+    dec = [_american_to_decimal(v) for v in vals if v is not None and not (isinstance(v, float) and np.isnan(v))]
+    if not dec: return None
+    return _decimal_to_american(sum(dec) / len(dec))
+
 def _in_favor(fo, lo):
     if fo is None or lo is None: return None
     if fo < 0 and lo < 0:   return lo < fo
@@ -243,8 +260,8 @@ def build_consensus_records(records):
             continue
 
         avg_ev     = _avg([r["ev"]         for r in dom_recs])
-        avg_first  = _avg([r["firstOdds"]  for r in dom_recs])
-        avg_last   = _avg([r["lastOdds"]   for r in dom_recs])
+        avg_first  = _avg_odds([r["firstOdds"]  for r in dom_recs])
+        avg_last   = _avg_odds([r["lastOdds"]   for r in dom_recs])
         avg_mov    = _avg([r["movement"]   for r in dom_recs])
         mov_favor  = _in_favor(avg_first, avg_last)
 
