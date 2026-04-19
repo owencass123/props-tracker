@@ -878,7 +878,7 @@ function fmtAvgEv(v){
   return (v>=0?'+':'')+v.toFixed(1)+'%';
 }
 
-function buildPlayerTable(base){
+function buildPlayerTable(base, containerId='player-content'){
   // Build BOOK_RECORDS lookup: player|date|side|line → [book records]
   const bookMap={};
   BOOK_RECORDS.forEach(r=>{
@@ -970,7 +970,7 @@ function buildPlayerTable(base){
             const linePrefix=side==='Over'?'o':'u';
             const lineStr=cr.line!=null?`${linePrefix}${cr.line}`:'—';
             const ksStr=cr.actualKs!=null?`${cr.actualKs} K`:'—';
-            const uid=('pd_'+player+'_'+date+'_'+lk+'_'+side).replace(/[^a-zA-Z0-9]/g,'_');
+            const uid=(containerId+'_pd_'+player+'_'+date+'_'+lk+'_'+side).replace(/[^a-zA-Z0-9]/g,'_');
 
             html+=`<div class="pc-side-row">`;
             html+=`<span class="side-pill ${side.toLowerCase()}">${side}</span>`;
@@ -1024,21 +1024,12 @@ function buildPlayerTable(base){
   });
 
   if(!html) html='<p style="color:var(--sub);text-align:center;padding:20px">No data matches current filters.</p>';
-  document.getElementById('player-content').innerHTML=html;
+  document.getElementById(containerId).innerHTML=html;
 }
 
 function buildPicksTable(base){
-  // Only show sides where EV >= 10% AND moved in favor
   const picks = base.filter(r => r.ev !== null && r.ev >= 10 && r.movFavor === true);
-  if(!picks.length){
-    document.getElementById('picks-content').innerHTML='<p style="color:var(--sub);text-align:center;padding:20px">No picks match the criteria (EV ≥ 10% + moved in favor).</p>';
-    return;
-  }
-  // Reuse buildPlayerTable logic with filtered data, writing to picks-content
-  const saved = document.getElementById('player-content').innerHTML;
-  buildPlayerTable(picks);
-  document.getElementById('picks-content').innerHTML = document.getElementById('player-content').innerHTML;
-  document.getElementById('player-content').innerHTML = saved;
+  buildPlayerTable(picks, 'picks-content');
 }
 
 function togglePD(uid){
