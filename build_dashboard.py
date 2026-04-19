@@ -913,7 +913,7 @@ function buildPlayerTable(base, containerId='player-content'){
     const isToday=date===todayStr;
     const dateLabel=isToday?`Today — ${date}`:date;
     const playerCount=[...new Set(Object.values(byDate[date]).flatMap(g=>Object.keys(g)))].length;
-    const dgId='dg_'+date.replace(/\//g,'_');
+    const dgId=(containerId+'_dg_'+date).replace(/[^a-zA-Z0-9]/g,'_');
 
     html+=`<div class="date-group${isNewest?' open':''}" id="${dgId}">`;
     html+=`<div class="date-group-hdr" onclick="toggleDG('${dgId}')">`;
