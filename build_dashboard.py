@@ -456,7 +456,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="card"><div class="label">Picks W</div><div class="value green" id="s-wins">—</div></div>
       <div class="card"><div class="label">Picks L</div><div class="value" style="color:var(--red)" id="s-losses">—</div></div>
       <div class="card"><div class="label">Picks Win%</div><div class="value green" id="s-winrate">—</div></div>
-      <div class="card"><div class="label">Picks $</div><div class="value" id="s-pnl">—</div></div>
+      <div class="card"><div class="label">Picks Units</div><div class="value" id="s-pnl">—</div></div>
     </div>
   </div>
 
@@ -637,9 +637,10 @@ function updateCards(rows){
   document.getElementById('s-winrate').textContent = isNaN(rate)?'—':rate.toFixed(1)+'%';
   document.getElementById('s-winrate').style.color = rate>=55?'var(--accent)':rate>=45?'var(--text)':'var(--red)';
 
+  const totalUnits = totalPnl / 100;
   const pnlEl = document.getElementById('s-pnl');
-  pnlEl.textContent = graded.length ? (totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(0) : '—';
-  pnlEl.style.color = totalPnl>0?'var(--accent)':totalPnl<0?'var(--red)':'var(--text)';
+  pnlEl.textContent = graded.length ? (totalUnits>=0?'+':'')+totalUnits.toFixed(2)+'u' : '—';
+  pnlEl.style.color = totalUnits>0?'var(--accent)':totalUnits<0?'var(--red)':'var(--text)';
 }
 
 // ── EV% table ─────────────────────────────────────────────────────────────────
