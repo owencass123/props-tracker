@@ -613,14 +613,9 @@ function updateCards(rows){
   const uniquePlayers = new Set(RAW.map(r=>r.player+'|'+r.date)).size;
   document.getElementById('s-total').textContent = uniquePlayers;
 
-  // Picks stats — all qualifying unit plays across all tiers
+  // Picks stats — all 1-unit qualifying plays
   const used = new Set();
   const allPicks = [];
-  // 2-unit first (de-dupe same as buildUnitsTable)
-  RAW.forEach(r=>{
-    const key=r.player+'|'+r.date+'|'+r.side;
-    if(classifyUnits(r)===2 && !used.has(key)){ used.add(key); allPicks.push({...r,units:2}); }
-  });
   RAW.forEach(r=>{
     const key=r.player+'|'+r.date+'|'+r.side;
     if(classifyUnits(r)===1 && !used.has(key)){ used.add(key); allPicks.push({...r,units:1}); }
@@ -1079,13 +1074,11 @@ function buildPlayerTable(base, containerId='player-content'){
 
 // ── units tracker ─────────────────────────────────────────────────────────────
 function classifyUnits(r){
-  // Returns 2, 1, or 0
+  // Returns 1 or 0
   if(r.ev===null||r.movFavor===null) return 0;
   const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
-  // 2 units: EV >= 25% AND moved in favor by 10+
-  if(r.ev>=25 && r.movFavor===true && absMov>=10) return 2;
-  // 1 unit: (EV >= 15% AND moved in favor by 10+) OR (EV >= 20% AND moved in favor any)
-  if((r.ev>=15 && r.movFavor===true && absMov>=10) || (r.ev>=20 && r.movFavor===true)) return 1;
+  // 1 unit: EV >= 15% AND moved in favor by 10+
+  if(r.ev>=15 && r.movFavor===true && absMov>=10) return 1;
   return 0;
 }
 
@@ -1105,14 +1098,8 @@ function buildUnitsTable(base){
 
   const tiers = [
     {
-      label: '2 Units',
-      desc:  'EV ≥ 25% + moved in favor by 10+',
-      units: 2,
-      fn:    r => classifyUnits(r)===2,
-    },
-    {
       label: '1 Unit',
-      desc:  'EV ≥ 15% + moved in favor by 10+, or EV ≥ 20% + moved in favor',
+      desc:  'EV ≥ 15% + moved in favor by 10+',
       units: 1,
       fn:    r => classifyUnits(r)===1,
     },
