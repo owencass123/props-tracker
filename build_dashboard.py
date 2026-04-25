@@ -76,8 +76,8 @@ def extract_teams(matchup):
         return frozenset()
     # Normalize Unabated abbreviations → MLB API abbreviations
     _abbr_map = {
-        "SF": "SFG", "KC": "KCR", "SD": "SDP", "TB": "TBR",
-        "CWS": "CWS", "WSH": "WSH", "WAS": "WSH",
+        "OAK": "ATH",   # Athletics (now Sacramento/Las Vegas)
+        "WAS": "WSH",   # Nationals
     }
     tokens = re.findall(r'\b([A-Za-z]{2,3})\b', str(matchup))
     abbrs = [t.upper() for t in tokens if t.lower() not in {'vs', 'at'}]
