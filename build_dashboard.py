@@ -5,10 +5,12 @@ a fully self-contained interactive dashboard for win-rate analysis.
 
 import json
 import re
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import pandas as pd
 import numpy as np
+import requests
 
 DATA_FILE  = Path("data/props.csv")
 OUTPUT     = Path("docs/index.html")
@@ -66,6 +68,51 @@ def extract_game_time(matchup):
     m = re.search(r'(\d{1,2}:\d{2}\s*[AP]M)', str(matchup), re.IGNORECASE)
     return m.group(1).strip().upper() if m else ""
 
+_CT = timezone(timedelta(hours=-5))  # CDT = UTC-5
+
+def extract_teams(matchup):
+    """Extract two team abbreviations from matchup like 'CIN\\nvs.\\nLAA' → frozenset({'CIN','LAA'})."""
+    if not matchup:
+        return frozenset()
+    tokens = re.findall(r'\b([A-Za-z]{2,3})\b', str(matchup))
+    abbrs = [t.upper() for t in tokens if t.lower() not in {'vs', 'at'}]
+    return frozenset(abbrs[:2]) if len(abbrs) >= 2 else frozenset()
+
+def fetch_game_times(date_strs):
+    """
+    Fetch game start times (CT) from MLB Stats API for the given dates.
+    Returns dict: (date_str, frozenset({abbr1, abbr2})) → '7:10 PM'
+    """
+    result = {}
+    for date_str in set(date_strs):
+        if not date_str:
+            continue
+        try:
+            r = requests.get(
+                "https://statsapi.mlb.com/api/v1/schedule",
+                params={"sportId": 1, "date": date_str, "hydrate": "team"},
+                timeout=15
+            )
+            r.raise_for_status()
+            for d in r.json().get("dates", []):
+                for g in d.get("games", []):
+                    game_date = g.get("gameDate", "")
+                    teams = g.get("teams", {})
+                    home = (teams.get("home", {}).get("team", {}).get("abbreviation") or "").upper()
+                    away = (teams.get("away", {}).get("team", {}).get("abbreviation") or "").upper()
+                    if not home or not away or not game_date:
+                        continue
+                    try:
+                        dt_utc = datetime.fromisoformat(game_date.replace("Z", "+00:00"))
+                        dt_ct = dt_utc.astimezone(_CT)
+                        time_ct = dt_ct.strftime("%-I:%M %p")
+                    except Exception:
+                        continue
+                    result[(date_str, frozenset({home, away}))] = time_ct
+        except Exception as e:
+            print(f"  ⚠️  fetch_game_times({date_str}): {e}")
+    return result
+
 def time_to_minutes(t):
     """Convert '08:55 AM' / '01:40 PM' to total minutes since midnight for sorting."""
     if not isinstance(t, str) or not t.strip():
@@ -80,7 +127,7 @@ def time_to_minutes(t):
         h = 0
     return h * 60 + mn
 
-def build_records(df):
+def build_records(df, game_times=None):
     if df.empty:
         return []
 
@@ -177,7 +224,7 @@ def build_records(df):
                 "book":        str(book),
                 "side":        side,
                 "date":        date_str,
-                "gameTime":    extract_game_time(str(matchup)),
+                "gameTime":    (game_times or {}).get((date_str, extract_teams(str(matchup))), "") or extract_game_time(str(matchup)),
                 "ev":          ev_cur,
                 "firstOdds":   first_odds,
                 "lastOdds":    last_odds,
@@ -1338,7 +1385,15 @@ def main():
     from datetime import datetime
     from zoneinfo import ZoneInfo
     df = load_data()
-    book_records  = build_records(df)
+    date_strs = []
+    if not df.empty and "Date" in df.columns:
+        date_strs = [
+            pd.Timestamp(d).strftime("%m/%d/%Y")
+            for d in df["Date"].dropna().unique()
+            if pd.notna(d)
+        ]
+    game_times = fetch_game_times(date_strs)
+    book_records  = build_records(df, game_times)
     consensus     = build_consensus_records(book_records)
 
     updated = datetime.now(ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %I:%M %p CT").replace(" 0", " ")
