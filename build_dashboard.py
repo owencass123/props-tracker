@@ -74,8 +74,14 @@ def extract_teams(matchup):
     """Extract two team abbreviations from matchup like 'CIN\\nvs.\\nLAA' → frozenset({'CIN','LAA'})."""
     if not matchup:
         return frozenset()
+    # Normalize Unabated abbreviations → MLB API abbreviations
+    _abbr_map = {
+        "SF": "SFG", "KC": "KCR", "SD": "SDP", "TB": "TBR",
+        "CWS": "CWS", "WSH": "WSH", "WAS": "WSH",
+    }
     tokens = re.findall(r'\b([A-Za-z]{2,3})\b', str(matchup))
     abbrs = [t.upper() for t in tokens if t.lower() not in {'vs', 'at'}]
+    abbrs = [_abbr_map.get(a, a) for a in abbrs]
     return frozenset(abbrs[:2]) if len(abbrs) >= 2 else frozenset()
 
 def fetch_game_times(date_strs):
