@@ -78,6 +78,7 @@ def extract_teams(matchup):
     _abbr_map = {
         "OAK": "ATH",   # Athletics (now Sacramento/Las Vegas)
         "WAS": "WSH",   # Nationals
+        "ARI": "AZ",    # Diamondbacks
     }
     tokens = re.findall(r'\b([A-Za-z]{2,3})\b', str(matchup))
     abbrs = [t.upper() for t in tokens if t.lower() not in {'vs', 'at'}]
