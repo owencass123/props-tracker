@@ -157,14 +157,6 @@ def build_records(df, game_times=None):
         grp = grp.assign(_sort_key=grp["Time"].apply(time_to_minutes))
         grp = grp.sort_values("_sort_key", na_position="last").drop(columns="_sort_key")
 
-        # Filter out odds recorded at or after game start — post-start line moves
-        # are irrelevant and should not affect EV/movement calculations.
-        if game_start:
-            start_mins = time_to_minutes(game_start)
-            grp = grp[grp["Time"].apply(time_to_minutes) < start_mins]
-        if grp.empty:
-            continue
-
         for side in ("Over", "Under"):
             ev_col     = f"{side} EV%"
             odds_col   = f"{side} Odds"
