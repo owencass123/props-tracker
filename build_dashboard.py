@@ -146,6 +146,9 @@ def build_records(df, game_times=None):
     group_cols = ["Player", "Matchup", "Sportsbook", "Date"]
 
     for (player, matchup, book, date_val), grp in df.groupby(group_cols, dropna=False):
+        date_str = pd.Timestamp(date_val).strftime("%m/%d/%Y") if pd.notna(date_val) else ""
+        game_start = (game_times or {}).get((date_str, extract_teams(str(matchup))), "") or extract_game_time(str(matchup))
+
         # Deduplicate rows with the same Time value — each scraper run re-appends
         # the full odds history, so identical (Time, Over Odds, Under Odds) rows
         # accumulate across scrape sessions.
@@ -153,6 +156,14 @@ def build_records(df, game_times=None):
         # Sort by proper 24h time (string sort breaks on AM/PM boundary)
         grp = grp.assign(_sort_key=grp["Time"].apply(time_to_minutes))
         grp = grp.sort_values("_sort_key", na_position="last").drop(columns="_sort_key")
+
+        # Filter out odds recorded at or after game start — post-start line moves
+        # are irrelevant and should not affect EV/movement calculations.
+        if game_start:
+            start_mins = time_to_minutes(game_start)
+            grp = grp[grp["Time"].apply(time_to_minutes) < start_mins]
+        if grp.empty:
+            continue
 
         for side in ("Over", "Under"):
             ev_col     = f"{side} EV%"
@@ -223,15 +234,13 @@ def build_records(df, game_times=None):
                 try: actual_ks_val = float(actual_ks.iloc[-1])
                 except: pass
 
-            date_str = pd.Timestamp(date_val).strftime("%m/%d/%Y") if pd.notna(date_val) else ""
-
             records.append({
                 "player":      str(player),
                 "matchup":     str(matchup),
                 "book":        str(book),
                 "side":        side,
                 "date":        date_str,
-                "gameTime":    (game_times or {}).get((date_str, extract_teams(str(matchup))), "") or extract_game_time(str(matchup)),
+                "gameTime":    game_start,
                 "ev":          ev_cur,
                 "firstOdds":   first_odds,
                 "lastOdds":    last_odds,
