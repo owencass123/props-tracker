@@ -787,12 +787,14 @@ function buildComboTable(base){
   const movs = [
     {label:'In Favor',    fn:r=>r.movFavor===true},
     {label:'In Favor 10+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'In Favor 20+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=20},
     {label:'Against',     fn:r=>r.movFavor===false},
     {label:'Against 10+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'Against 20+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=20},
   ];
 
   // Positive EV section
-  const posTs = [0,5,10,15,20,25];
+  const posTs = [0,5,10,15,20,25,30,40,50];
   let html='<div class="matrix-wrap">';
   html+=`<div style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Positive EV &ge; threshold</div>`;
   html+='<table><thead><tr><th>EV% &ge;</th>';
@@ -810,7 +812,7 @@ function buildComboTable(base){
   html+='</tbody></table>';
 
   // Negative EV section
-  const negTs = [0,-5,-10,-15,-20,-25];
+  const negTs = [0,-5,-10,-15,-20,-25,-30,-40,-50];
   html+=`<div style="color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 6px">Negative EV &le; threshold</div>`;
   html+='<table><thead><tr><th>EV% &le;</th>';
   movs.forEach(m=>html+=`<th>Move: ${m.label}</th>`);
