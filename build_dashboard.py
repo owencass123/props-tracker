@@ -787,9 +787,11 @@ function buildComboTable(base){
   const movs = [
     {label:'In Favor',    fn:r=>r.movFavor===true},
     {label:'In Favor 10+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'In Favor 15+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=15},
     {label:'In Favor 20+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=20},
     {label:'Against',     fn:r=>r.movFavor===false},
     {label:'Against 10+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'Against 15+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=15},
     {label:'Against 20+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=20},
   ];
 
