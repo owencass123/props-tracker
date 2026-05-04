@@ -563,6 +563,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <!-- Picks -->
   <div id="tab-picks" class="tab-panel section">
     <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— 1 unit = $100 risked</span></h2>
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <button id="strat-btn-a" onclick="setStrategy('A')"
+        style="padding:7px 18px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600">
+        Strategy A
+      </button>
+      <button id="strat-btn-b" onclick="setStrategy('B')"
+        style="padding:7px 18px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--sub);font-size:13px;cursor:pointer">
+        Strategy B
+      </button>
+      <span id="strat-desc" style="align-self:center;font-size:12px;color:var(--sub);margin-left:4px">
+        EV ≥ 15% + moved in favor 10+
+      </span>
+    </div>
     <div id="units-summary"></div>
     <div id="units-content" style="margin-top:24px"></div>
   </div>
@@ -673,7 +686,7 @@ function updateCards(rows){
   const allPicks = [];
   RAW.forEach(r=>{
     const key=r.player+'|'+r.date+'|'+r.side;
-    if(classifyUnits(r)===1 && !used.has(key)){ used.add(key); allPicks.push({...r,units:1}); }
+    if(activeClassify(r)===1 && !used.has(key)){ used.add(key); allPicks.push({...r,units:1}); }
   });
 
   const graded = allPicks.filter(r=>r.result==='Win'||r.result==='Loss');
@@ -1133,12 +1146,44 @@ function buildPlayerTable(base, containerId='player-content'){
 
 // ── units tracker ─────────────────────────────────────────────────────────────
 function classifyUnits(r){
-  // Returns 1 or 0
+  // Strategy A: EV >= 15% AND moved in favor by 10+
   if(r.ev===null||r.movFavor===null) return 0;
   const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
-  // 1 unit: EV >= 15% AND moved in favor by 10+
   if(r.ev>=15 && r.movFavor===true && absMov>=10) return 1;
   return 0;
+}
+
+function classifyUnitsB(r){
+  // Strategy B: (EV > 0 AND moved in favor 20+) OR (EV >= 40% AND moved in favor at all)
+  if(r.ev===null||r.movFavor===null) return 0;
+  const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
+  if(r.ev>0 && r.movFavor===true && absMov>=20) return 1;
+  if(r.ev>=40 && r.movFavor===true) return 1;
+  return 0;
+}
+
+let _strategy = 'A';
+function setStrategy(s){
+  _strategy = s;
+  const btnA = document.getElementById('strat-btn-a');
+  const btnB = document.getElementById('strat-btn-b');
+  const desc = document.getElementById('strat-desc');
+  if(s==='A'){
+    btnA.style.background='var(--accent)'; btnA.style.color='#fff'; btnA.style.borderColor='var(--accent)';
+    btnB.style.background='transparent';   btnB.style.color='var(--sub)'; btnB.style.borderColor='var(--border)';
+    desc.textContent='EV \u2265 15% + moved in favor 10+';
+  } else {
+    btnB.style.background='var(--accent)'; btnB.style.color='#fff'; btnB.style.borderColor='var(--accent)';
+    btnA.style.background='transparent';   btnA.style.color='var(--sub)'; btnA.style.borderColor='var(--border)';
+    desc.textContent='EV > 0% + moved in favor 20+, or EV \u2265 40% + moved in favor';
+  }
+  const display = applyFilters(CONSENSUS);
+  buildUnitsTable(display);
+  updateCards(display);
+}
+
+function activeClassify(r){
+  return _strategy==='A' ? classifyUnits(r) : classifyUnitsB(r);
 }
 
 function calcPnl(result, odds, units){
@@ -1155,12 +1200,15 @@ function calcPnl(result, odds, units){
 function buildUnitsTable(base){
   const UNIT_VAL = 100;
 
+  const tierDesc = _strategy==='A'
+    ? 'EV \u2265 15% + moved in favor by 10+'
+    : 'EV > 0% + moved in favor 20+, or EV \u2265 40% + moved in favor';
   const tiers = [
     {
       label: '1 Unit',
-      desc:  'EV ≥ 15% + moved in favor by 10+',
+      desc:  tierDesc,
       units: 1,
-      fn:    r => classifyUnits(r)===1,
+      fn:    r => activeClassify(r)===1,
     },
   ];
 
