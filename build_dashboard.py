@@ -1177,9 +1177,10 @@ function setStrategy(s){
     btnA.style.background='transparent';   btnA.style.color='var(--sub)'; btnA.style.borderColor='var(--border)';
     desc.textContent='EV > 0% + moved in favor 20+, or EV \u2265 40% + moved in favor';
   }
-  const display = applyFilters(CONSENSUS);
+  const filtered = getFiltered();
+  updateCards(filtered);
+  const display = getFilteredForDisplay();
   buildUnitsTable(display);
-  updateCards(display);
 }
 
 function activeClassify(r){
