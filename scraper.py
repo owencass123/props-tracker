@@ -31,7 +31,8 @@ if not USERNAME or not PASSWORD:
     raise RuntimeError("Set UNABATED_USERNAME and UNABATED_PASSWORD environment variables.")
 
 # ── sportsbook column IDs in the AG Grid ──────────────────────────────────────
-SPORTSBOOK_COL_IDS = {
+# Fallback hardcoded IDs — used only if auto-detection fails.
+SPORTSBOOK_COL_IDS_DEFAULT = {
     "FanDuel":    "2",
     "DraftKings": "1",
     "Sharp Book": "7",
@@ -43,6 +44,26 @@ SPORTSBOOK_COL_IDS = {
     "BetRivers":  "17",
     "Fanatics":   "86",
     "Hard Rock":  "24",
+}
+
+# Will be populated at runtime by detect_col_ids()
+SPORTSBOOK_COL_IDS = {}
+
+# Canonical names to match against header text (lowercase, partial match ok)
+BOOK_NAME_ALIASES = {
+    "fanduel":    "FanDuel",
+    "draftkings": "DraftKings",
+    "sharp":      "Sharp Book",
+    "caesars":    "Caesars",
+    "betmgm":     "BetMGM",
+    "mgm":        "BetMGM",
+    "espn":       "ESPN Bet",
+    "bookmaker":  "Bookmaker",
+    "bovada":     "Bovada",
+    "betrivers":  "BetRivers",
+    "fanatics":   "Fanatics",
+    "hard rock":  "Hard Rock",
+    "hardrock":   "Hard Rock",
 }
 
 DATA_FILE = Path("data/props.csv")
@@ -59,6 +80,62 @@ CSV_COLUMNS = [
 # GitHub Actions runs after midnight UTC (late CT games cross midnight UTC).
 _CT = timezone(timedelta(hours=-5))   # CDT = UTC-5 (Apr–Nov)
 TODAY = datetime.now(_CT).strftime("%m/%d/%Y")
+
+
+# ── column ID auto-detection ──────────────────────────────────────────────────
+
+def detect_col_ids(driver):
+    """
+    Read the AG Grid header cells to map sportsbook names → col-id attributes.
+    Populates SPORTSBOOK_COL_IDS; falls back to hardcoded defaults for any book
+    that can't be found in the header.
+    """
+    global SPORTSBOOK_COL_IDS
+    detected = {}
+    try:
+        # Scroll through the entire header width to reveal all columns
+        grid_scroll_to(driver, 0)
+        time.sleep(0.3)
+        max_scroll = get_grid_scroll_width(driver)
+        step = 300
+        x = 0
+        while x <= max_scroll + step:
+            headers = driver.find_elements(
+                By.CSS_SELECTOR,
+                ".ag-header-container .ag-header-cell[col-id]"
+            )
+            for h in headers:
+                col_id = h.get_attribute("col-id")
+                if not col_id:
+                    continue
+                try:
+                    label = h.find_element(
+                        By.CSS_SELECTOR, ".ag-header-cell-text"
+                    ).text.strip().lower()
+                except Exception:
+                    label = h.text.strip().lower()
+                if not label:
+                    continue
+                for alias, canonical in BOOK_NAME_ALIASES.items():
+                    if alias in label and canonical not in detected:
+                        detected[canonical] = col_id
+                        print(f"  📌 Detected col-id for {canonical}: {col_id} (header: '{label}')")
+                        break
+            x += step
+            grid_scroll_to(driver, x)
+            time.sleep(0.1)
+        grid_scroll_to(driver, 0)
+    except Exception as e:
+        print(f"  ⚠️  detect_col_ids failed: {e}")
+
+    # Fill in any missing books from hardcoded defaults
+    for book, default_id in SPORTSBOOK_COL_IDS_DEFAULT.items():
+        if book not in detected:
+            print(f"  ⚠️  {book}: not detected in header, using default col-id {default_id}")
+            detected[book] = default_id
+
+    SPORTSBOOK_COL_IDS = detected
+    print(f"✅ Column IDs resolved: {SPORTSBOOK_COL_IDS}")
 
 
 # ── driver setup ──────────────────────────────────────────────────────────────
@@ -569,6 +646,7 @@ def main():
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".ag-center-cols-container .ag-row"))
         )
+        detect_col_ids(driver)
         scroll_and_process_all_rows(driver, rows_out)
     except Exception as e:
         print(f"\n❌ Fatal error: {e}")
