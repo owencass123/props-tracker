@@ -241,6 +241,30 @@ def main():
     else:
         print("🧹 No cross-day duplicates found")
 
+    # ── Remove stale pending rows ─────────────────────────────────────────────
+    # Any row still NoStat/empty more than 1 full day after its game date is
+    # a bad scrape (wrong day, postponed, etc.) — drop it automatically.
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    today = _dt.now(ZoneInfo("America/Chicago")).date()
+
+    def _is_stale_pending(row):
+        result = str(row.get("Over Result", "")).strip()
+        if result in graded_results or result not in ("", "NoStat"):
+            return False  # already graded or has some other status — leave it
+        d = _parse_date(row.get("Date", ""))
+        if d is None:
+            return False
+        return (today - d).days > 1
+
+    before = len(df)
+    df = df[~df.apply(_is_stale_pending, axis=1)].reset_index(drop=True)
+    removed_stale = before - len(df)
+    if removed_stale:
+        print(f"🗑️  Removed {removed_stale} stale pending rows (NoStat >1 day old)")
+    else:
+        print("🗑️  No stale pending rows found")
+
     # Add result columns if missing
     for col in ("Actual Ks", "Over Result", "Under Result"):
         if col not in df.columns:
