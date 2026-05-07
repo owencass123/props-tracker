@@ -1145,9 +1145,17 @@ function buildPlayerTable(base, containerId='player-content'){
 }
 
 // ── units tracker ─────────────────────────────────────────────────────────────
+function closingOdds(r){ return r.lastOdds!==null ? r.lastOdds : r.firstOdds; }
+function oddsOk(r){
+  // Exclude picks at -200 or longer (more negative)
+  const o = closingOdds(r);
+  return o===null || o > -200;
+}
+
 function classifyUnits(r){
   // Strategy A: EV >= 15% AND moved in favor by 10+
   if(r.ev===null||r.movFavor===null) return 0;
+  if(!oddsOk(r)) return 0;
   const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
   if(r.ev>=15 && r.movFavor===true && absMov>=10) return 1;
   return 0;
@@ -1156,6 +1164,7 @@ function classifyUnits(r){
 function classifyUnitsB(r){
   // Strategy B: (EV > 0 AND moved in favor 20+) OR (EV >= 40% AND moved in favor at all)
   if(r.ev===null||r.movFavor===null) return 0;
+  if(!oddsOk(r)) return 0;
   const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
   if(r.ev>0 && r.movFavor===true && absMov>=20) return 1;
   if(r.ev>=40 && r.movFavor===true) return 1;
