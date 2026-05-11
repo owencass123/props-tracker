@@ -628,6 +628,25 @@ def append_to_csv(rows):
         for r in rows:
             writer.writerow({c: r.get(c, "") for c in CSV_COLUMNS})
     print(f"\n💾 Appended {len(rows)} rows to {DATA_FILE}")
+    _dedup_csv()
+
+
+def _dedup_csv():
+    """Remove exact duplicate rows from the CSV to prevent file bloat."""
+    try:
+        import pandas as pd
+        df = pd.read_csv(DATA_FILE, dtype=str, on_bad_lines='warn')
+        before = len(df)
+        dedup_cols = ['Player','Matchup','Sportsbook','Date','Time',
+                      'Over Odds','Under Odds','Over Line','Under Line']
+        existing = [c for c in dedup_cols if c in df.columns]
+        df = df.drop_duplicates(subset=existing, keep='last')
+        after = len(df)
+        if after < before:
+            df.to_csv(DATA_FILE, index=False)
+            print(f"🧹 Deduped CSV: {before} → {after} rows")
+    except Exception as e:
+        print(f"⚠️  CSV dedup failed (non-fatal): {e}")
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
