@@ -3,9 +3,6 @@ name: Scrape Props & Update Dashboard
 on:
   workflow_dispatch:   # triggered externally via cron-job.org at exact CT times
 
-concurrency:
-  group: scrape
-  cancel-in-progress: false
 
 permissions:
   contents: write
