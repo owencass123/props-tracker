@@ -582,19 +582,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <span style="font-weight:600;font-size:14px">Strategy Builder</span>
         <button onclick="closeStratBuilder()" style="background:none;border:none;color:var(--sub);font-size:18px;cursor:pointer">✕</button>
       </div>
-      <div style="margin-bottom:10px">
-        <label style="font-size:12px;color:var(--sub)">Name</label><br>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:var(--sub)">Strategy Name</label><br>
         <input id="strat-name-input" type="text" placeholder="My Strategy"
           style="margin-top:4px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;width:220px">
       </div>
-      <div style="font-size:12px;color:var(--sub);margin-bottom:6px">
-        Rules — a pick qualifies if it matches <b>any</b> rule:
+      <div style="font-size:12px;color:var(--sub);margin-bottom:8px">
+        Click cells to select rules — a pick qualifies if it matches <b>any</b> selected cell. Green = selected. Win% shown for each combo.
       </div>
-      <div id="strat-rules"></div>
-      <button onclick="addStratRule()"
-        style="margin-top:8px;padding:5px 12px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--sub);font-size:12px;cursor:pointer">
-        + Add Rule
-      </button>
+      <div id="strat-grid"></div>
+      <div style="margin-top:12px;font-size:12px;color:var(--sub)">Selected rules: <span id="strat-rules-summary" style="color:var(--text)">none</span></div>
       <div style="display:flex;gap:8px;margin-top:14px">
         <button onclick="saveStrat()"
           style="padding:7px 18px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600">
@@ -1250,81 +1247,117 @@ function refreshPicks(){
 
 // ── strategy builder ──────────────────────────────────────────────────────────
 let _editingStratId = null;
+let _selectedRules  = []; // {ev, mov, dir}
+
+const BUILDER_EV_THRESHOLDS  = [0,5,10,15,20,25,30,40,50];
+const BUILDER_MOV_COLS = [
+  {label:'In Favor',    dir:'favor',   mov:0},
+  {label:'In Favor 10+',dir:'favor',   mov:10},
+  {label:'In Favor 15+',dir:'favor',   mov:15},
+  {label:'In Favor 20+',dir:'favor',   mov:20},
+  {label:'Against',     dir:'against', mov:0},
+  {label:'Against 10+', dir:'against', mov:10},
+  {label:'Against 15+', dir:'against', mov:15},
+  {label:'Against 20+', dir:'against', mov:20},
+];
+
+function ruleKey(ev, dir, mov){ return ev+'|'+dir+'|'+mov; }
+
+function builderWinRate(base, ev, dir, mov){
+  const rows = base.filter(r=>{
+    if(r.ev===null||r.ev<ev) return false;
+    if(dir==='favor'   && r.movFavor!==true)  return false;
+    if(dir==='against' && r.movFavor!==false) return false;
+    const absMov = r.movement!==null?Math.abs(r.movement):0;
+    if(absMov<mov) return false;
+    return r.result==='Win'||r.result==='Loss';
+  });
+  const wins = rows.filter(r=>r.result==='Win').length;
+  return {n:rows.length, rate: rows.length ? wins/rows.length : null};
+}
+
+function renderBuilderGrid(base){
+  const grid = document.getElementById('strat-grid');
+  const selectedKeys = new Set(_selectedRules.map(r=>ruleKey(r.ev,r.dir,r.mov)));
+
+  let html = '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px">';
+  html += '<thead><tr><th style="padding:6px 10px;text-align:left;color:var(--sub)">EV% &ge;</th>';
+  BUILDER_MOV_COLS.forEach(c=>{
+    html += `<th style="padding:6px 8px;text-align:center;color:var(--sub);white-space:nowrap">${c.label}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  BUILDER_EV_THRESHOLDS.forEach(ev=>{
+    html += `<tr><td style="padding:6px 10px;font-weight:600;color:var(--text)">+${ev}%</td>`;
+    BUILDER_MOV_COLS.forEach(c=>{
+      const key = ruleKey(ev, c.dir, c.mov);
+      const sel = selectedKeys.has(key);
+      const {n, rate} = builderWinRate(base, ev, c.dir, c.mov);
+      const rateStr = rate!==null ? (rate*100).toFixed(0)+'%' : '—';
+      const nStr    = n ? `(${n})` : '';
+      const bg   = sel ? 'var(--accent)' : (rate!==null&&rate>=0.55?'rgba(0,200,100,0.12)':rate!==null&&rate<0.45?'rgba(255,80,80,0.08)':'transparent');
+      const color= sel ? '#fff' : (rate!==null&&rate>=0.55?'var(--accent)':rate!==null&&rate<0.45?'var(--red)':'var(--sub)');
+      html += `<td onclick="toggleBuilderCell(${ev},'${c.dir}',${c.mov})"
+        data-key="${key}"
+        style="padding:6px 10px;text-align:center;cursor:pointer;border-radius:4px;background:${bg};color:${color};user-select:none">
+        ${rateStr}<br><span style="font-size:10px;opacity:.7">${nStr}</span>
+      </td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  grid.innerHTML = html;
+  updateRulesSummary();
+}
+
+function toggleBuilderCell(ev, dir, mov){
+  const key = ruleKey(ev, dir, mov);
+  const idx = _selectedRules.findIndex(r=>ruleKey(r.ev,r.dir,r.mov)===key);
+  if(idx>=0) _selectedRules.splice(idx,1);
+  else _selectedRules.push({ev, dir, mov});
+  // Re-render grid with updated selections
+  const base = getFilteredForDisplay();
+  renderBuilderGrid(base);
+}
+
+function updateRulesSummary(){
+  const el = document.getElementById('strat-rules-summary');
+  if(!el) return;
+  if(!_selectedRules.length){ el.textContent='none'; return; }
+  el.textContent = _selectedRules.map(r=>`EV≥${r.ev}% + ${r.dir} ${r.mov>0?r.mov+'+':''}`).join(' OR ');
+}
 
 function openStratBuilder(id){
   _editingStratId = id;
-  const panel = document.getElementById('strat-builder');
+  const panel     = document.getElementById('strat-builder');
   const nameInput = document.getElementById('strat-name-input');
   const deleteBtn = document.getElementById('strat-delete-btn');
-  const rulesDiv  = document.getElementById('strat-rules');
 
   if(id){
     const s = _strategies.find(x=>x.id===id);
-    nameInput.value = s.name;
-    rulesDiv.innerHTML = '';
-    s.rules.forEach(r=>addStratRule(r));
+    nameInput.value  = s.name;
+    _selectedRules   = s.rules.map(r=>({...r}));
     deleteBtn.style.display = 'inline-block';
   } else {
-    nameInput.value = '';
-    rulesDiv.innerHTML = '';
-    addStratRule();
+    nameInput.value  = '';
+    _selectedRules   = [];
     deleteBtn.style.display = 'none';
   }
+
   panel.style.display = 'block';
+  const base = getFilteredForDisplay();
+  renderBuilderGrid(base);
 }
 
 function closeStratBuilder(){
   document.getElementById('strat-builder').style.display='none';
 }
 
-function addStratRule(existing){
-  const rulesDiv = document.getElementById('strat-rules');
-  const idx = rulesDiv.children.length;
-  const ev  = existing ? existing.ev  : 10;
-  const mov = existing ? existing.mov : 10;
-  const dir = existing ? existing.dir : 'favor';
-
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap';
-  row.innerHTML = `
-    <span style="font-size:12px;color:var(--sub);min-width:30px">EV &ge;</span>
-    <input type="number" value="${ev}" min="-100" max="100" step="1"
-      style="width:60px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px">
-    <span style="font-size:12px;color:var(--sub)">%  &nbsp; Move</span>
-    <select style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px">
-      <option value="favor"   ${dir==='favor'  ?'selected':''}>In Favor</option>
-      <option value="against" ${dir==='against'?'selected':''}>Against</option>
-      <option value="any"     ${dir==='any'    ?'selected':''}>Any</option>
-    </select>
-    <span style="font-size:12px;color:var(--sub)">&ge;</span>
-    <input type="number" value="${mov}" min="0" max="200" step="1"
-      style="width:60px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px">
-    <button onclick="this.parentElement.remove()"
-      style="background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
-  `;
-  rulesDiv.appendChild(row);
-}
-
-function readRulesFromBuilder(){
-  const rulesDiv = document.getElementById('strat-rules');
-  const rules = [];
-  for(const row of rulesDiv.children){
-    const inputs  = row.querySelectorAll('input[type=number]');
-    const selects = row.querySelectorAll('select');
-    if(inputs.length < 2) continue;
-    rules.push({
-      ev:  parseFloat(inputs[0].value) || 0,
-      dir: selects[0].value,
-      mov: parseFloat(inputs[1].value) || 0,
-    });
-  }
-  return rules;
-}
-
 function saveStrat(){
   const name  = document.getElementById('strat-name-input').value.trim() || 'Custom';
-  const rules = readRulesFromBuilder();
-  if(!rules.length){ alert('Add at least one rule.'); return; }
+  if(!_selectedRules.length){ alert('Select at least one cell from the grid.'); return; }
+  const rules = _selectedRules.map(r=>({...r}));
 
   if(_editingStratId){
     const s = _strategies.find(x=>x.id===_editingStratId);
