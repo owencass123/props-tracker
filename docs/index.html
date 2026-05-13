@@ -95,7 +95,7 @@
     <div style="margin-top:4px;font-size:12px;color:var(--sub)">MLB Strikeout Props — Win Rate Analysis</div>
   </div>
   <div style="margin-left:auto;text-align:right;">
-    <div class="badge" id="last-updated">Updated: 2026-05-12 11:03 PM CT</div>
+    <div class="badge" id="last-updated">Updated: 2026-05-12 11:33 PM CT</div>
   </div>
 </header>
 
@@ -207,19 +207,49 @@
   <!-- Picks -->
   <div id="tab-picks" class="tab-panel section">
     <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— 1 unit = $100 risked</span></h2>
-    <div style="display:flex;gap:8px;margin-bottom:20px">
-      <button id="strat-btn-a" onclick="setStrategy('A')"
-        style="padding:7px 18px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600">
-        Strategy A
-      </button>
-      <button id="strat-btn-b" onclick="setStrategy('B')"
-        style="padding:7px 18px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--sub);font-size:13px;cursor:pointer">
-        Strategy B
-      </button>
-      <span id="strat-desc" style="align-self:center;font-size:12px;color:var(--sub);margin-left:4px">
-        EV ≥ 15% + moved in favor 10+
-      </span>
+
+    <!-- Strategy selector -->
+    <div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--sub);text-transform:uppercase;letter-spacing:.05em">Strategy:</span>
+        <div id="strat-tabs" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <button onclick="openStratBuilder(null)"
+          style="padding:5px 12px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--sub);font-size:12px;cursor:pointer">
+          + New
+        </button>
+      </div>
     </div>
+
+    <!-- Strategy builder panel -->
+    <div id="strat-builder" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-weight:600;font-size:14px">Strategy Builder</span>
+        <button onclick="closeStratBuilder()" style="background:none;border:none;color:var(--sub);font-size:18px;cursor:pointer">✕</button>
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:12px;color:var(--sub)">Name</label><br>
+        <input id="strat-name-input" type="text" placeholder="My Strategy"
+          style="margin-top:4px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;width:220px">
+      </div>
+      <div style="font-size:12px;color:var(--sub);margin-bottom:6px">
+        Rules — a pick qualifies if it matches <b>any</b> rule:
+      </div>
+      <div id="strat-rules"></div>
+      <button onclick="addStratRule()"
+        style="margin-top:8px;padding:5px 12px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--sub);font-size:12px;cursor:pointer">
+        + Add Rule
+      </button>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button onclick="saveStrat()"
+          style="padding:7px 18px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600">
+          Save
+        </button>
+        <button id="strat-delete-btn" onclick="deleteStrat()" style="display:none;padding:7px 18px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:13px;cursor:pointer">
+          Delete
+        </button>
+      </div>
+    </div>
+
     <div id="units-summary"></div>
     <div id="units-content" style="margin-top:24px"></div>
   </div>
@@ -796,48 +826,174 @@ function oddsOk(r){
   return o===null || o > -200;
 }
 
-function classifyUnits(r){
-  // Strategy A: EV >= 15% AND moved in favor by 10+
-  if(r.ev===null||r.movFavor===null) return 0;
-  if(!oddsOk(r)) return 0;
-  const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
-  if(r.ev>=15 && r.movFavor===true && absMov>=10) return 1;
-  return 0;
+// ── strategy engine ───────────────────────────────────────────────────────────
+const DEFAULT_STRATEGIES = [
+  { id:'A', name:'Strategy A', rules:[{ev:15, mov:10, dir:'favor'}] },
+  { id:'B', name:'Strategy B', rules:[{ev:0,  mov:20, dir:'favor'},{ev:40, mov:0, dir:'favor'}] },
+];
+
+function loadStrategies(){
+  try {
+    const s = localStorage.getItem('picks_strategies');
+    if(s) return JSON.parse(s);
+  } catch(e){}
+  return DEFAULT_STRATEGIES.map(s=>({...s}));
+}
+function saveStrategies(arr){
+  try { localStorage.setItem('picks_strategies', JSON.stringify(arr)); } catch(e){}
 }
 
-function classifyUnitsB(r){
-  // Strategy B: (EV > 0 AND moved in favor 20+) OR (EV >= 40% AND moved in favor at all)
-  if(r.ev===null||r.movFavor===null) return 0;
-  if(!oddsOk(r)) return 0;
+let _strategies = loadStrategies();
+let _activeStratId = _strategies.length ? _strategies[0].id : 'A';
+
+function ruleMatchesRecord(rule, r){
+  if(r.ev===null||r.movFavor===null) return false;
+  if(!oddsOk(r)) return false;
   const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
-  if(r.ev>0 && r.movFavor===true && absMov>=20) return 1;
-  if(r.ev>=40 && r.movFavor===true) return 1;
-  return 0;
+  if(rule.dir==='favor'   && r.movFavor!==true)  return false;
+  if(rule.dir==='against' && r.movFavor!==false) return false;
+  if(r.ev < rule.ev)   return false;
+  if(absMov < rule.mov) return false;
+  return true;
 }
 
-let _strategy = 'A';
-function setStrategy(s){
-  _strategy = s;
-  const btnA = document.getElementById('strat-btn-a');
-  const btnB = document.getElementById('strat-btn-b');
-  const desc = document.getElementById('strat-desc');
-  if(s==='A'){
-    btnA.style.background='var(--accent)'; btnA.style.color='#fff'; btnA.style.borderColor='var(--accent)';
-    btnB.style.background='transparent';   btnB.style.color='var(--sub)'; btnB.style.borderColor='var(--border)';
-    desc.textContent='EV ≥ 15% + moved in favor 10+';
-  } else {
-    btnB.style.background='var(--accent)'; btnB.style.color='#fff'; btnB.style.borderColor='var(--accent)';
-    btnA.style.background='transparent';   btnA.style.color='var(--sub)'; btnA.style.borderColor='var(--border)';
-    desc.textContent='EV > 0% + moved in favor 20+, or EV ≥ 40% + moved in favor';
-  }
+function activeClassify(r){
+  const strat = _strategies.find(s=>s.id===_activeStratId);
+  if(!strat) return 0;
+  return strat.rules.some(rule=>ruleMatchesRecord(rule, r)) ? 1 : 0;
+}
+
+// kept for updateCards compatibility
+function classifyUnits(r){ return activeClassify(r); }
+
+function renderStratTabs(){
+  const container = document.getElementById('strat-tabs');
+  if(!container) return;
+  container.innerHTML = '';
+  _strategies.forEach(s=>{
+    const active = s.id===_activeStratId;
+    const btn = document.createElement('button');
+    btn.textContent = s.name;
+    btn.style.cssText = `padding:7px 16px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:${active?'600':'400'};
+      border:1px solid ${active?'var(--accent)':'var(--border)'};
+      background:${active?'var(--accent)':'transparent'};
+      color:${active?'#fff':'var(--sub)'}`;
+    btn.onclick = ()=>{ _activeStratId=s.id; renderStratTabs(); refreshPicks(); };
+    btn.ondblclick = ()=>openStratBuilder(s.id);
+    btn.title = 'Double-click to edit';
+    container.appendChild(btn);
+  });
+}
+
+function refreshPicks(){
   const filtered = getFiltered();
   updateCards(filtered);
   const display = getFilteredForDisplay();
   buildUnitsTable(display);
 }
 
-function activeClassify(r){
-  return _strategy==='A' ? classifyUnits(r) : classifyUnitsB(r);
+// ── strategy builder ──────────────────────────────────────────────────────────
+let _editingStratId = null;
+
+function openStratBuilder(id){
+  _editingStratId = id;
+  const panel = document.getElementById('strat-builder');
+  const nameInput = document.getElementById('strat-name-input');
+  const deleteBtn = document.getElementById('strat-delete-btn');
+  const rulesDiv  = document.getElementById('strat-rules');
+
+  if(id){
+    const s = _strategies.find(x=>x.id===id);
+    nameInput.value = s.name;
+    rulesDiv.innerHTML = '';
+    s.rules.forEach(r=>addStratRule(r));
+    deleteBtn.style.display = 'inline-block';
+  } else {
+    nameInput.value = '';
+    rulesDiv.innerHTML = '';
+    addStratRule();
+    deleteBtn.style.display = 'none';
+  }
+  panel.style.display = 'block';
+}
+
+function closeStratBuilder(){
+  document.getElementById('strat-builder').style.display='none';
+}
+
+function addStratRule(existing){
+  const rulesDiv = document.getElementById('strat-rules');
+  const idx = rulesDiv.children.length;
+  const ev  = existing ? existing.ev  : 10;
+  const mov = existing ? existing.mov : 10;
+  const dir = existing ? existing.dir : 'favor';
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap';
+  row.innerHTML = `
+    <span style="font-size:12px;color:var(--sub);min-width:30px">EV &ge;</span>
+    <input type="number" value="${ev}" min="-100" max="100" step="1"
+      style="width:60px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px">
+    <span style="font-size:12px;color:var(--sub)">%  &nbsp; Move</span>
+    <select style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px">
+      <option value="favor"   ${dir==='favor'  ?'selected':''}>In Favor</option>
+      <option value="against" ${dir==='against'?'selected':''}>Against</option>
+      <option value="any"     ${dir==='any'    ?'selected':''}>Any</option>
+    </select>
+    <span style="font-size:12px;color:var(--sub)">&ge;</span>
+    <input type="number" value="${mov}" min="0" max="200" step="1"
+      style="width:60px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px">
+    <button onclick="this.parentElement.remove()"
+      style="background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
+  `;
+  rulesDiv.appendChild(row);
+}
+
+function readRulesFromBuilder(){
+  const rulesDiv = document.getElementById('strat-rules');
+  const rules = [];
+  for(const row of rulesDiv.children){
+    const inputs  = row.querySelectorAll('input[type=number]');
+    const selects = row.querySelectorAll('select');
+    if(inputs.length < 2) continue;
+    rules.push({
+      ev:  parseFloat(inputs[0].value) || 0,
+      dir: selects[0].value,
+      mov: parseFloat(inputs[1].value) || 0,
+    });
+  }
+  return rules;
+}
+
+function saveStrat(){
+  const name  = document.getElementById('strat-name-input').value.trim() || 'Custom';
+  const rules = readRulesFromBuilder();
+  if(!rules.length){ alert('Add at least one rule.'); return; }
+
+  if(_editingStratId){
+    const s = _strategies.find(x=>x.id===_editingStratId);
+    if(s){ s.name=name; s.rules=rules; }
+  } else {
+    const id = 'custom_'+Date.now();
+    _strategies.push({id, name, rules});
+    _activeStratId = id;
+  }
+  saveStrategies(_strategies);
+  renderStratTabs();
+  closeStratBuilder();
+  refreshPicks();
+}
+
+function deleteStrat(){
+  if(!_editingStratId) return;
+  if(!confirm('Delete this strategy?')) return;
+  _strategies = _strategies.filter(s=>s.id!==_editingStratId);
+  if(!_strategies.length) _strategies = DEFAULT_STRATEGIES.map(s=>({...s}));
+  _activeStratId = _strategies[0].id;
+  saveStrategies(_strategies);
+  renderStratTabs();
+  closeStratBuilder();
+  refreshPicks();
 }
 
 function calcPnl(result, odds, units){
@@ -1087,6 +1243,7 @@ function showTab(id){
 });
 
 
+renderStratTabs();
 refresh();
 </script>
 </body>
