@@ -476,7 +476,20 @@ def extract_frozen_info(driver, row_id):
 
 # ── row / cell processing ─────────────────────────────────────────────────────
 
+def cell_has_data(cell):
+    """Return True if the cell has any visible content (odds or EV%)."""
+    try:
+        text = cell.text.strip()
+        return bool(text)
+    except Exception:
+        return False
+
+
 def process_cell(driver, cell, player, matchup, book, rows_out):
+    if not cell_has_data(cell):
+        print(f"  ⏭️  {book}: empty cell, skipping")
+        return
+
     ev_over, ev_under = extract_ev(cell)
 
     if not open_panel(driver, cell):
