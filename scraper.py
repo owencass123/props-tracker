@@ -116,8 +116,7 @@ def detect_col_ids(driver):
                     label = h.text.strip().lower()
                 if not label:
                     continue
-                        if label:
-                    print(f"  🔎 Header col-id={col_id!r} label={label!r}")
+                print(f"  🔎 Header col-id={col_id!r} label={label!r}")
                 for alias, canonical in BOOK_NAME_ALIASES.items():
                     if alias in label and canonical not in detected:
                         detected[canonical] = col_id
