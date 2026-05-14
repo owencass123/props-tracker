@@ -1188,7 +1188,13 @@ const DEFAULT_STRATEGIES = [
 function loadStrategies(){
   try {
     const s = localStorage.getItem('picks_strategies');
-    if(s) return JSON.parse(s);
+    if(s){
+      const parsed = JSON.parse(s);
+      // Validate: must be array of objects with id, name, rules array
+      if(Array.isArray(parsed) && parsed.length && parsed[0].id && Array.isArray(parsed[0].rules)){
+        return parsed;
+      }
+    }
   } catch(e){}
   return DEFAULT_STRATEGIES.map(s=>({...s}));
 }
@@ -1399,9 +1405,8 @@ function calcPnl(result, odds, units){
 function buildUnitsTable(base){
   const UNIT_VAL = 100;
 
-  const tierDesc = _strategy==='A'
-    ? 'EV \u2265 15% + moved in favor by 10+'
-    : 'EV > 0% + moved in favor 20+, or EV \u2265 40% + moved in favor';
+  const strat = _strategies.find(s=>s.id===_activeStratId);
+  const tierDesc = strat ? strat.rules.map(r=>`EV\u2265${r.ev}% + ${r.dir} ${r.mov>0?r.mov+'+':''}`).join(' OR ') : '';
   const tiers = [
     {
       label: '1 Unit',
