@@ -829,10 +829,14 @@ function buildComboTable(base){
     {label:'In Favor 10+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=10},
     {label:'In Favor 15+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=15},
     {label:'In Favor 20+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=20},
+    {label:'In Favor 25+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=25},
+    {label:'In Favor 30+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=30},
     {label:'Against',     fn:r=>r.movFavor===false},
     {label:'Against 10+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=10},
     {label:'Against 15+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=15},
     {label:'Against 20+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=20},
+    {label:'Against 25+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=25},
+    {label:'Against 30+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=30},
   ];
 
   // Positive EV section
@@ -1261,10 +1265,14 @@ const BUILDER_MOV_COLS = [
   {label:'In Favor 10+',dir:'favor',   mov:10},
   {label:'In Favor 15+',dir:'favor',   mov:15},
   {label:'In Favor 20+',dir:'favor',   mov:20},
+  {label:'In Favor 25+',dir:'favor',   mov:25},
+  {label:'In Favor 30+',dir:'favor',   mov:30},
   {label:'Against',     dir:'against', mov:0},
   {label:'Against 10+', dir:'against', mov:10},
   {label:'Against 15+', dir:'against', mov:15},
   {label:'Against 20+', dir:'against', mov:20},
+  {label:'Against 25+', dir:'against', mov:25},
+  {label:'Against 30+', dir:'against', mov:30},
 ];
 
 function ruleKey(ev, dir, mov){ return ev+'|'+dir+'|'+mov; }
