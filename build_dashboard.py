@@ -839,17 +839,20 @@ function buildComboTable(base){
     {label:'Against 30+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=30},
   ];
 
-  // Positive EV section
-  const posTs = [0,5,10,15,20,25,30,40,50];
+  // Positive EV section — each row is an exact range [lo, hi)
+  const posBands = [
+    [0,5],[5,10],[10,15],[15,20],[20,25],[25,30],[30,40],[40,50],[50,Infinity]
+  ];
   let html='<div class="matrix-wrap">';
-  html+=`<div style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Positive EV &ge; threshold</div>`;
-  html+='<table><thead><tr><th>EV% &ge;</th>';
+  html+=`<div style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Positive EV — exact range</div>`;
+  html+='<table><thead><tr><th>EV% range</th>';
   movs.forEach(m=>html+=`<th>Move: ${m.label}</th>`);
   html+='</tr></thead><tbody>';
-  posTs.forEach(t=>{
-    html+=`<tr><td><b>+${t}%</b></td>`;
+  posBands.forEach(([lo,hi])=>{
+    const label = hi===Infinity ? `+${lo}%+` : `+${lo}% – +${hi}%`;
+    html+=`<tr><td><b>${label}</b></td>`;
     movs.forEach(({fn})=>{
-      const rows=base.filter(r=>r.ev!==null&&r.ev>=t&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
+      const rows=base.filter(r=>r.ev!==null&&r.ev>=lo&&(hi===Infinity||r.ev<hi)&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
       const {rate,n}=winRate(rows);
       html+=`<td>${fmtPct(rate)} ${fmtN(n)}</td>`;
     });
@@ -857,16 +860,19 @@ function buildComboTable(base){
   });
   html+='</tbody></table>';
 
-  // Negative EV section
-  const negTs = [0,-5,-10,-15,-20,-25,-30,-40,-50];
-  html+=`<div style="color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 6px">Negative EV &le; threshold</div>`;
-  html+='<table><thead><tr><th>EV% &le;</th>';
+  // Negative EV section — each row is an exact range (lo, hi]
+  const negBands = [
+    [-5,0],[-10,-5],[-15,-10],[-20,-15],[-25,-20],[-30,-25],[-40,-30],[-50,-40],[-Infinity,-50]
+  ];
+  html+=`<div style="color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 6px">Negative EV — exact range</div>`;
+  html+='<table><thead><tr><th>EV% range</th>';
   movs.forEach(m=>html+=`<th>Move: ${m.label}</th>`);
   html+='</tr></thead><tbody>';
-  negTs.forEach(t=>{
-    html+=`<tr><td><b>${t}%</b></td>`;
+  negBands.forEach(([lo,hi])=>{
+    const label = lo===-Infinity ? `${hi}% and below` : `${lo}% – ${hi}%`;
+    html+=`<tr><td><b>${label}</b></td>`;
     movs.forEach(({fn})=>{
-      const rows=base.filter(r=>r.ev!==null&&r.ev<=t&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
+      const rows=base.filter(r=>r.ev!==null&&r.ev<=hi&&(lo===-Infinity||r.ev>lo)&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
       const {rate,n}=winRate(rows);
       html+=`<td>${fmtPct(rate)} ${fmtN(n)}</td>`;
     });
