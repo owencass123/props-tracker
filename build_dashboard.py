@@ -824,41 +824,31 @@ function buildMovTable(base){
 
 // ── combo table ───────────────────────────────────────────────────────────────
 function buildComboTable(base){
-  function movBand(r, dir, lo, hi){
-    if(dir==='favor'   && r.movFavor!==true)  return false;
-    if(dir==='against' && r.movFavor!==false) return false;
-    const m = r.movement!==null ? Math.abs(r.movement) : 0;
-    return m>=lo && (hi===null||m<hi);
-  }
   const movs = [
-    {label:'In Favor 0–10',  fn:r=>movBand(r,'favor',  0,  10)},
-    {label:'In Favor 10–15', fn:r=>movBand(r,'favor',  10, 15)},
-    {label:'In Favor 15–20', fn:r=>movBand(r,'favor',  15, 20)},
-    {label:'In Favor 20–25', fn:r=>movBand(r,'favor',  20, 25)},
-    {label:'In Favor 25–30', fn:r=>movBand(r,'favor',  25, 30)},
-    {label:'In Favor 30+',   fn:r=>movBand(r,'favor',  30, null)},
-    {label:'Against 0–10',   fn:r=>movBand(r,'against',0,  10)},
-    {label:'Against 10–15',  fn:r=>movBand(r,'against',10, 15)},
-    {label:'Against 15–20',  fn:r=>movBand(r,'against',15, 20)},
-    {label:'Against 20–25',  fn:r=>movBand(r,'against',20, 25)},
-    {label:'Against 25–30',  fn:r=>movBand(r,'against',25, 30)},
-    {label:'Against 30+',    fn:r=>movBand(r,'against',30, null)},
+    {label:'In Favor',    fn:r=>r.movFavor===true},
+    {label:'In Favor 10+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'In Favor 15+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=15},
+    {label:'In Favor 20+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=20},
+    {label:'In Favor 25+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=25},
+    {label:'In Favor 30+',fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=30},
+    {label:'Against',     fn:r=>r.movFavor===false},
+    {label:'Against 10+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'Against 15+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=15},
+    {label:'Against 20+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=20},
+    {label:'Against 25+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=25},
+    {label:'Against 30+', fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=30},
   ];
 
-  // Positive EV section — each row is an exact range [lo, hi)
-  const posBands = [
-    [0,5],[5,10],[10,15],[15,20],[20,25],[25,30],[30,40],[40,50],[50,Infinity]
-  ];
+  const posTs = [0,5,10,15,20,25,30,40,50];
   let html='<div class="matrix-wrap">';
-  html+=`<div style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Positive EV — exact range</div>`;
-  html+='<table><thead><tr><th>EV% range</th>';
+  html+=`<div style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Positive EV &ge; threshold</div>`;
+  html+='<table><thead><tr><th>EV% &ge;</th>';
   movs.forEach(m=>html+=`<th>Move: ${m.label}</th>`);
   html+='</tr></thead><tbody>';
-  posBands.forEach(([lo,hi])=>{
-    const label = hi===Infinity ? `+${lo}%+` : `+${lo}% – +${hi}%`;
-    html+=`<tr><td><b>${label}</b></td>`;
+  posTs.forEach(t=>{
+    html+=`<tr><td><b>+${t}%</b></td>`;
     movs.forEach(({fn})=>{
-      const rows=base.filter(r=>r.ev!==null&&r.ev>=lo&&(hi===Infinity||r.ev<hi)&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
+      const rows=base.filter(r=>r.ev!==null&&r.ev>=t&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
       const {rate,n}=winRate(rows);
       html+=`<td>${fmtPct(rate)} ${fmtN(n)}</td>`;
     });
@@ -866,19 +856,15 @@ function buildComboTable(base){
   });
   html+='</tbody></table>';
 
-  // Negative EV section — each row is an exact range (lo, hi]
-  const negBands = [
-    [-5,0],[-10,-5],[-15,-10],[-20,-15],[-25,-20],[-30,-25],[-40,-30],[-50,-40],[-Infinity,-50]
-  ];
-  html+=`<div style="color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 6px">Negative EV — exact range</div>`;
-  html+='<table><thead><tr><th>EV% range</th>';
+  const negTs = [0,-5,-10,-15,-20,-25,-30,-40,-50];
+  html+=`<div style="color:var(--red);font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 6px">Negative EV &le; threshold</div>`;
+  html+='<table><thead><tr><th>EV% &le;</th>';
   movs.forEach(m=>html+=`<th>Move: ${m.label}</th>`);
   html+='</tr></thead><tbody>';
-  negBands.forEach(([lo,hi])=>{
-    const label = lo===-Infinity ? `${hi}% and below` : `${lo}% – ${hi}%`;
-    html+=`<tr><td><b>${label}</b></td>`;
+  negTs.forEach(t=>{
+    html+=`<tr><td><b>${t}%</b></td>`;
     movs.forEach(({fn})=>{
-      const rows=base.filter(r=>r.ev!==null&&r.ev<=hi&&(lo===-Infinity||r.ev>lo)&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
+      const rows=base.filter(r=>r.ev!==null&&r.ev<=t&&fn(r)&&(r.result==='Win'||r.result==='Loss'));
       const {rate,n}=winRate(rows);
       html+=`<td>${fmtPct(rate)} ${fmtN(n)}</td>`;
     });
@@ -1197,8 +1183,8 @@ function oddsOk(r){
 
 // ── strategy engine ───────────────────────────────────────────────────────────
 const DEFAULT_STRATEGIES = [
-  { id:'A', name:'Strategy A', rules:[{ev:15, maxEv:null, mov:10, maxMov:null, dir:'favor'}] },
-  { id:'B', name:'Strategy B', rules:[{ev:0,  maxEv:null, mov:20, maxMov:null, dir:'favor'},{ev:40, maxEv:null, mov:0, maxMov:null, dir:'favor'}] },
+  { id:'A', name:'Strategy A', rules:[{ev:15, mov:10, dir:'favor'}] },
+  { id:'B', name:'Strategy B', rules:[{ev:0, mov:20, dir:'favor'},{ev:40, mov:0, dir:'favor'}] },
 ];
 
 function loadStrategies(){
@@ -1228,9 +1214,7 @@ function ruleMatchesRecord(rule, r){
   if(rule.dir==='favor'   && r.movFavor!==true)  return false;
   if(rule.dir==='against' && r.movFavor!==false) return false;
   if(r.ev < rule.ev) return false;
-  if(rule.maxEv!==null && rule.maxEv!==undefined && r.ev >= rule.maxEv) return false;
   if(absMov < rule.mov) return false;
-  if(rule.maxMov!==null && rule.maxMov!==undefined && absMov >= rule.maxMov) return false;
   return true;
 }
 
@@ -1271,41 +1255,36 @@ function refreshPicks(){
 
 // ── strategy builder ──────────────────────────────────────────────────────────
 let _editingStratId = null;
-let _selectedRules  = []; // {ev, maxEv, dir, mov, maxMov}
+let _selectedRules  = []; // {ev, dir, mov}
 
-const BUILDER_EV_BANDS = [
-  {lo:0,  hi:5},  {lo:5,  hi:10}, {lo:10, hi:15}, {lo:15, hi:20},
-  {lo:20, hi:25}, {lo:25, hi:30}, {lo:30, hi:40}, {lo:40, hi:50}, {lo:50, hi:null}
-];
+const BUILDER_EV_THRESHOLDS = [0,5,10,15,20,25,30,40,50];
 const BUILDER_MOV_COLS = [
-  {label:'In Favor 0–10',  dir:'favor',   mov:0,  maxMov:10},
-  {label:'In Favor 10–15', dir:'favor',   mov:10, maxMov:15},
-  {label:'In Favor 15–20', dir:'favor',   mov:15, maxMov:20},
-  {label:'In Favor 20–25', dir:'favor',   mov:20, maxMov:25},
-  {label:'In Favor 25–30', dir:'favor',   mov:25, maxMov:30},
-  {label:'In Favor 30+',   dir:'favor',   mov:30, maxMov:null},
-  {label:'Against 0–10',   dir:'against', mov:0,  maxMov:10},
-  {label:'Against 10–15',  dir:'against', mov:10, maxMov:15},
-  {label:'Against 15–20',  dir:'against', mov:15, maxMov:20},
-  {label:'Against 20–25',  dir:'against', mov:20, maxMov:25},
-  {label:'Against 25–30',  dir:'against', mov:25, maxMov:30},
-  {label:'Against 30+',    dir:'against', mov:30, maxMov:null},
+  {label:'In Favor 0+',  dir:'favor',   mov:0},
+  {label:'In Favor 10+', dir:'favor',   mov:10},
+  {label:'In Favor 15+', dir:'favor',   mov:15},
+  {label:'In Favor 20+', dir:'favor',   mov:20},
+  {label:'In Favor 25+', dir:'favor',   mov:25},
+  {label:'In Favor 30+', dir:'favor',   mov:30},
+  {label:'Against 0+',   dir:'against', mov:0},
+  {label:'Against 10+',  dir:'against', mov:10},
+  {label:'Against 15+',  dir:'against', mov:15},
+  {label:'Against 20+',  dir:'against', mov:20},
+  {label:'Against 25+',  dir:'against', mov:25},
+  {label:'Against 30+',  dir:'against', mov:30},
 ];
 
-function ruleKey(ev, maxEv, dir, mov, maxMov){
-  return `${ev}|${maxEv}|${dir}|${mov}|${maxMov}`;
+function ruleKey(ev, dir, mov){
+  return `${ev}|${dir}|${mov}`;
 }
-function ruleKeyFromObj(r){ return ruleKey(r.ev, r.maxEv, r.dir, r.mov, r.maxMov); }
+function ruleKeyFromObj(r){ return ruleKey(r.ev, r.dir, r.mov); }
 
-function builderWinRate(base, ev, maxEv, dir, mov, maxMov){
+function builderWinRate(base, ev, dir, mov){
   const rows = base.filter(r=>{
     if(r.ev===null||r.ev<ev) return false;
-    if(maxEv!==null && r.ev>=maxEv) return false;
     if(dir==='favor'   && r.movFavor!==true)  return false;
     if(dir==='against' && r.movFavor!==false) return false;
     const absMov = r.movement!==null?Math.abs(r.movement):0;
     if(absMov<mov) return false;
-    if(maxMov!==null && absMov>=maxMov) return false;
     return r.result==='Win'||r.result==='Loss';
   });
   const wins = rows.filter(r=>r.result==='Win').length;
@@ -1317,24 +1296,24 @@ function renderBuilderGrid(base){
   const selectedKeys = new Set(_selectedRules.map(ruleKeyFromObj));
 
   let html = '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px">';
-  html += '<thead><tr><th style="padding:6px 10px;text-align:left;color:var(--sub)">EV% range</th>';
+  html += '<thead><tr><th style="padding:6px 10px;text-align:left;color:var(--sub)">EV% \u2265</th>';
   BUILDER_MOV_COLS.forEach(c=>{
     html += `<th style="padding:6px 8px;text-align:center;color:var(--sub);white-space:nowrap">${c.label}</th>`;
   });
   html += '</tr></thead><tbody>';
 
-  BUILDER_EV_BANDS.forEach(({lo, hi})=>{
-    const evLabel = hi===null ? `+${lo}%+` : `+${lo}–${hi}%`;
+  BUILDER_EV_THRESHOLDS.forEach(lo=>{
+    const evLabel = `+${lo}%+`;
     html += `<tr><td style="padding:6px 10px;font-weight:600;color:var(--text)">${evLabel}</td>`;
     BUILDER_MOV_COLS.forEach(c=>{
-      const key = ruleKey(lo, hi, c.dir, c.mov, c.maxMov);
+      const key = ruleKey(lo, c.dir, c.mov);
       const sel = selectedKeys.has(key);
-      const {n, rate} = builderWinRate(base, lo, hi, c.dir, c.mov, c.maxMov);
+      const {n, rate} = builderWinRate(base, lo, c.dir, c.mov);
       const rateStr = rate!==null ? (rate*100).toFixed(0)+'%' : '—';
       const nStr    = n ? `(${n})` : '';
       const bg   = sel ? 'var(--accent)' : (rate!==null&&rate>=0.55?'rgba(0,200,100,0.12)':rate!==null&&rate<0.45?'rgba(255,80,80,0.08)':'transparent');
       const color= sel ? '#fff' : (rate!==null&&rate>=0.55?'var(--accent)':rate!==null&&rate<0.45?'var(--red)':'var(--sub)');
-      html += `<td onclick="toggleBuilderCell(${lo},${hi},'${c.dir}',${c.mov},${c.maxMov})"
+      html += `<td onclick="toggleBuilderCell(${lo},'${c.dir}',${c.mov})"
         data-key="${key}"
         style="padding:6px 10px;text-align:center;cursor:pointer;border-radius:4px;background:${bg};color:${color};user-select:none">
         ${rateStr}<br><span style="font-size:10px;opacity:.7">${nStr}</span>
@@ -1348,11 +1327,11 @@ function renderBuilderGrid(base){
   updateRulesSummary();
 }
 
-function toggleBuilderCell(ev, maxEv, dir, mov, maxMov){
-  const key = ruleKey(ev, maxEv, dir, mov, maxMov);
+function toggleBuilderCell(ev, dir, mov){
+  const key = ruleKey(ev, dir, mov);
   const idx = _selectedRules.findIndex(r=>ruleKeyFromObj(r)===key);
   if(idx>=0) _selectedRules.splice(idx,1);
-  else _selectedRules.push({ev, maxEv, dir, mov, maxMov});
+  else _selectedRules.push({ev, dir, mov});
   const base = getFilteredForDisplay();
   renderBuilderGrid(base);
 }
@@ -1362,9 +1341,7 @@ function updateRulesSummary(){
   if(!el) return;
   if(!_selectedRules.length){ el.textContent='none'; return; }
   el.textContent = _selectedRules.map(r=>{
-    const evStr  = r.maxEv!==null  ? `EV ${r.ev}–${r.maxEv}%`  : `EV ≥${r.ev}%`;
-    const movStr = r.maxMov!==null ? `mov ${r.mov}–${r.maxMov}` : `mov ${r.mov}+`;
-    return `${evStr} + ${r.dir} ${movStr}`;
+    return `EV \u2265${r.ev}% + ${r.dir} mov ${r.mov}+`;
   }).join(' OR ');
 }
 
