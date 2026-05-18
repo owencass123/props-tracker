@@ -1440,12 +1440,21 @@ function buildUnitsTable(base){
   });
 
   // ── Summary table ────────────────────────────────────────────────────────────
+  function toDecimal(o){ return o>0 ? 1+o/100 : 1+100/o; }
+  function avgOddsAmerican(recs){
+    const withOdds = recs.map(r=>r.lastOdds!==null?r.lastOdds:r.firstOdds).filter(o=>o!==null);
+    if(!withOdds.length) return null;
+    const avgDec = withOdds.reduce((s,o)=>s+toDecimal(o),0)/withOdds.length;
+    return avgDec>=2 ? Math.round((avgDec-1)*100) : Math.round(-100/(avgDec-1));
+  }
+
   function tierStats(recs, unitSize){
     const graded = recs.filter(r=>r.result==='Win'||r.result==='Loss');
     const wins   = graded.filter(r=>r.result==='Win').length;
     const losses = graded.length - wins;
     const pnl    = graded.reduce((sum,r)=>sum + (calcPnl(r.result, r.lastOdds||r.firstOdds, unitSize)||0), 0);
-    return {wins, losses, n:graded.length, pnl, pending: recs.length - graded.length};
+    const avgOdds = avgOddsAmerican(recs);
+    return {wins, losses, n:graded.length, pnl, pending: recs.length - graded.length, avgOdds};
   }
 
   const thS='padding:10px 14px;text-align:center;';
@@ -1456,22 +1465,27 @@ function buildUnitsTable(base){
       <th style="padding:10px 14px;text-align:left">Tier</th>
       <th style="${thS}">Criteria</th>
       <th style="${thS}">W</th><th style="${thS}">L</th><th style="${thS}">Win%</th>
+      <th style="${thS}">Avg Odds</th>
       <th style="${thS}">Pending</th><th style="${thS}">$</th>
     </tr></thead><tbody>`;
 
-  let totalWins=0, totalLosses=0, totalPnl=0, totalPending=0;
+  let totalWins=0, totalLosses=0, totalPnl=0, totalPending=0, allRecs=[];
   tiers.forEach(t=>{
     const s = tierStats(t.recs, t.units);
     totalWins+=s.wins; totalLosses+=s.losses; totalPnl+=s.pnl; totalPending+=s.pending;
+    allRecs=allRecs.concat(t.recs);
     const winPct = s.n>0 ? (s.wins/s.n*100).toFixed(1)+'%' : '—';
     const pnlColor = s.pnl>0?'var(--accent)':s.pnl<0?'var(--red)':'var(--text)';
     const pnlStr = s.n>0 ? `<b style="color:${pnlColor}">${s.pnl>=0?'+':''}$${s.pnl.toFixed(0)}</b>` : '—';
+    const oddsStr = s.avgOdds!==null ? (s.avgOdds>0?'+':'')+s.avgOdds : '—';
+    const oddsColor = s.avgOdds!==null&&s.avgOdds<-130?'var(--red)':s.avgOdds!==null&&s.avgOdds>-110?'var(--accent)':'var(--text)';
     sumHtml+=`<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:9px 14px;font-weight:700">${t.label}</td>
       <td style="${tdS};font-size:12px;color:var(--sub)">${t.desc}</td>
       <td style="${tdS}" class="win">${s.wins}</td>
       <td style="${tdS}" class="loss">${s.losses}</td>
       <td style="${tdS}">${winPct}</td>
+      <td style="${tdS};color:${oddsColor};font-weight:600">${oddsStr}</td>
       <td style="${tdS};color:var(--warn)">${s.pending}</td>
       <td style="${tdS}">${pnlStr}</td>
     </tr>`;
@@ -1481,12 +1495,16 @@ function buildUnitsTable(base){
   const totN = totalWins+totalLosses;
   const totPct = totN>0?(totalWins/totN*100).toFixed(1)+'%':'—';
   const totColor = totalPnl>0?'var(--accent)':totalPnl<0?'var(--red)':'var(--text)';
+  const totAvgOdds = avgOddsAmerican(allRecs);
+  const totOddsStr = totAvgOdds!==null ? (totAvgOdds>0?'+':'')+totAvgOdds : '—';
+  const totOddsColor = totAvgOdds!==null&&totAvgOdds<-130?'var(--red)':totAvgOdds!==null&&totAvgOdds>-110?'var(--accent)':'var(--text)';
   sumHtml+=`<tr style="border-top:2px solid var(--border);background:#1e2130">
     <td style="padding:9px 14px;font-weight:700;font-size:13px">All Units</td>
     <td style="${tdS};color:var(--sub);font-size:12px">Combined</td>
     <td style="${tdS};font-weight:700" class="win">${totalWins}</td>
     <td style="${tdS};font-weight:700" class="loss">${totalLosses}</td>
     <td style="${tdS};font-weight:700">${totPct}</td>
+    <td style="${tdS};color:${totOddsColor};font-weight:700">${totOddsStr}</td>
     <td style="${tdS};color:var(--warn)">${totalPending}</td>
     <td style="${tdS}"><b style="color:${totColor};font-size:15px">${totalPnl>=0?'+':''}$${totalPnl.toFixed(0)}</b></td>
   </tr>`;
