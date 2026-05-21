@@ -1440,7 +1440,7 @@ function buildUnitsTable(base){
   });
 
   // ── Summary table ────────────────────────────────────────────────────────────
-  function toDecimal(o){ return o>0 ? 1+o/100 : 1+100/o; }
+  function toDecimal(o){ return o>0 ? 1+o/100 : 1+100/Math.abs(o); }
   function avgOddsAmerican(recs){
     const withOdds = recs.map(r=>r.lastOdds!==null?r.lastOdds:r.firstOdds).filter(o=>o!==null);
     if(!withOdds.length) return null;
