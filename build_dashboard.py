@@ -1183,8 +1183,8 @@ function oddsOk(r){
 
 // ── strategy engine ───────────────────────────────────────────────────────────
 const DEFAULT_STRATEGIES = [
-  { id:'A', name:'Strategy A', rules:[{ev:15, mov:10, dir:'favor'}] },
-  { id:'B', name:'Strategy B', rules:[{ev:0, mov:20, dir:'favor'},{ev:40, mov:0, dir:'favor'}] },
+  { id:'A', name:'Strategy 1', rules:[{ev:10, mov:20, dir:'favor'},{ev:25, mov:10, dir:'favor'},{ev:40, mov:0, dir:'favor'}] },
+  { id:'B', name:'Strategy 2', rules:[{ev:15, mov:20, dir:'favor'},{ev:25, mov:15, dir:'favor'}] },
 ];
 
 function loadStrategies(){
