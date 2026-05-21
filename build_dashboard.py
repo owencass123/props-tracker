@@ -1188,20 +1188,26 @@ const DEFAULT_STRATEGIES = [
 ];
 
 function loadStrategies(){
+  // Built-in strategies (A, B) always come from code — never from localStorage.
+  // Only custom strategies (ids not in DEFAULT_STRATEGIES) are persisted.
+  const defaultIds = new Set(DEFAULT_STRATEGIES.map(s=>s.id));
+  let custom = [];
   try {
     const s = localStorage.getItem('picks_strategies');
     if(s){
       const parsed = JSON.parse(s);
-      // Validate: must be array of objects with id, name, rules array
-      if(Array.isArray(parsed) && parsed.length && parsed[0].id && Array.isArray(parsed[0].rules)){
-        return parsed;
+      if(Array.isArray(parsed)){
+        custom = parsed.filter(s=>s.id && !defaultIds.has(s.id) && Array.isArray(s.rules));
       }
     }
   } catch(e){}
-  return DEFAULT_STRATEGIES.map(s=>({...s}));
+  return [...DEFAULT_STRATEGIES.map(s=>({...s})), ...custom];
 }
 function saveStrategies(arr){
-  try { localStorage.setItem('picks_strategies', JSON.stringify(arr)); } catch(e){}
+  // Only save custom strategies to localStorage; built-ins are always from code.
+  const defaultIds = new Set(DEFAULT_STRATEGIES.map(s=>s.id));
+  const custom = arr.filter(s=>!defaultIds.has(s.id));
+  try { localStorage.setItem('picks_strategies', JSON.stringify(custom)); } catch(e){}
 }
 
 let _strategies = loadStrategies();
