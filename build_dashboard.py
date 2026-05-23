@@ -89,35 +89,68 @@ def fetch_game_times(date_strs):
     """
     Fetch game start times (CT) from MLB Stats API for the given dates.
     Returns dict: (date_str, frozenset({abbr1, abbr2})) → '7:10 PM'
+
+    Searches each date ±1 day to catch doubleheaders and rescheduled games
+    that the API sometimes places on an adjacent calendar date.
+    The key always uses the original date_str so lookups stay consistent.
     """
+    from datetime import timedelta as _td
+
+    def _parse_date(s):
+        try:
+            return datetime.strptime(s, "%m/%d/%Y")
+        except Exception:
+            return None
+
+    def _fetch_one(api_date_str):
+        """Fetch raw game list for a single API date string (MM/DD/YYYY)."""
+        try:
+            r = requests.get(
+                "https://statsapi.mlb.com/api/v1/schedule",
+                params={"sportId": 1, "date": api_date_str, "hydrate": "team"},
+                timeout=15
+            )
+            r.raise_for_status()
+            games = []
+            for d in r.json().get("dates", []):
+                games.extend(d.get("games", []))
+            return games
+        except Exception as e:
+            print(f"  ⚠️  fetch_game_times({api_date_str}): {e}")
+            return []
+
     result = {}
     for date_str in set(date_strs):
         if not date_str:
             continue
-        try:
-            r = requests.get(
-                "https://statsapi.mlb.com/api/v1/schedule",
-                params={"sportId": 1, "date": date_str, "hydrate": "team"},
-                timeout=15
-            )
-            r.raise_for_status()
-            for d in r.json().get("dates", []):
-                for g in d.get("games", []):
-                    game_date = g.get("gameDate", "")
-                    teams = g.get("teams", {})
-                    home = (teams.get("home", {}).get("team", {}).get("abbreviation") or "").upper()
-                    away = (teams.get("away", {}).get("team", {}).get("abbreviation") or "").upper()
-                    if not home or not away or not game_date:
-                        continue
-                    try:
-                        dt_utc = datetime.fromisoformat(game_date.replace("Z", "+00:00"))
-                        dt_ct = dt_utc.astimezone(_CT)
-                        time_ct = dt_ct.strftime("%-I:%M %p")
-                    except Exception:
-                        continue
-                    result[(date_str, frozenset({home, away}))] = time_ct
-        except Exception as e:
-            print(f"  ⚠️  fetch_game_times({date_str}): {e}")
+        base = _parse_date(date_str)
+        if not base:
+            continue
+
+        # Collect games from day-1, day, day+1 to catch API quirks
+        all_games = []
+        for offset in (-1, 0, 1):
+            api_date = (base + _td(days=offset)).strftime("%m/%d/%Y")
+            all_games.extend(_fetch_one(api_date))
+
+        for g in all_games:
+            game_date = g.get("gameDate", "")
+            teams = g.get("teams", {})
+            home = (teams.get("home", {}).get("team", {}).get("abbreviation") or "").upper()
+            away = (teams.get("away", {}).get("team", {}).get("abbreviation") or "").upper()
+            if not home or not away or not game_date:
+                continue
+            try:
+                dt_utc = datetime.fromisoformat(game_date.replace("Z", "+00:00"))
+                dt_ct = dt_utc.astimezone(_CT)
+                time_ct = dt_ct.strftime("%-I:%M %p")
+            except Exception:
+                continue
+            key = (date_str, frozenset({home, away}))
+            # Don't overwrite if we already have an exact-date match
+            if key not in result:
+                result[key] = time_ct
+
     return result
 
 def time_to_minutes(t):
