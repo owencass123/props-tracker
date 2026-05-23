@@ -157,16 +157,28 @@ def build_records(df, game_times=None):
         grp = grp.assign(_sort_key=grp["Time"].apply(time_to_minutes))
         grp = grp.sort_values("_sort_key", na_position="last").drop(columns="_sort_key")
 
+        # For EV/movement, only use rows up to game start time.
+        # This prevents post-game odds moves from creating or removing picks.
+        # Picks keep updating normally right up until the game starts.
+        # If we don't have a game start time for this matchup, fall back to all rows.
+        game_start_min = time_to_minutes(game_start) if game_start else 9999
+        if game_start_min < 9999:
+            pre_grp = grp[grp["Time"].apply(time_to_minutes) <= game_start_min]
+            if pre_grp.empty:
+                pre_grp = grp  # no rows before game start, use all
+        else:
+            pre_grp = grp  # no game time available, use all rows
+
         for side in ("Over", "Under"):
             ev_col     = f"{side} EV%"
             odds_col   = f"{side} Odds"
             line_col   = f"{side} Line"
             result_col = f"{side} Result"
 
-            ev_vals   = grp[ev_col].dropna()
-            line_vals = grp[line_col].dropna()
+            ev_vals   = pre_grp[ev_col].dropna()
+            line_vals = pre_grp[line_col].dropna()
 
-            # Closing line = the most recent non-null line value
+            # Closing line = the most recent non-null pre-game line value
             line_val = float(line_vals.iloc[-1]) if len(line_vals) > 0 else None
 
             # Only use rows that share the closing line for first/last odds.
@@ -174,10 +186,10 @@ def build_records(df, game_times=None):
             # line are irrelevant to the current market and skew movement.
             if line_val is not None:
                 closing_line_str = line_vals.iloc[-1]  # original string e.g. "o5.5"
-                same_line_mask = grp[line_col] == closing_line_str
-                odds_vals = grp.loc[same_line_mask, odds_col].dropna()
+                same_line_mask = pre_grp[line_col] == closing_line_str
+                odds_vals = pre_grp.loc[same_line_mask, odds_col].dropna()
             else:
-                odds_vals = grp[odds_col].dropna()
+                odds_vals = pre_grp[odds_col].dropna()
 
             ev_cur     = float(ev_vals.iloc[-1])   if len(ev_vals)   > 0 else None
             first_odds = float(odds_vals.iloc[0])  if len(odds_vals) > 0 else None
