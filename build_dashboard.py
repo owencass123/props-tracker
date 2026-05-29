@@ -1216,8 +1216,10 @@ function oddsOk(r){
 
 // ── strategy engine ───────────────────────────────────────────────────────────
 const DEFAULT_STRATEGIES = [
-  { id:'A', name:'Strategy 1', rules:[{ev:10, mov:20, dir:'favor'},{ev:25, mov:10, dir:'favor'},{ev:40, mov:0, dir:'favor'}] },
-  { id:'B', name:'Strategy 2', rules:[{ev:15, mov:20, dir:'favor'},{ev:25, mov:15, dir:'favor'}] },
+  { id:'A',  name:'Strategy 1',  rules:[{ev:10, mov:20, dir:'favor'},{ev:25, mov:10, dir:'favor'},{ev:40, mov:0, dir:'favor'}] },
+  { id:'B',  name:'Strategy 2',  rules:[{ev:15, mov:20, dir:'favor'},{ev:25, mov:15, dir:'favor'}] },
+  { id:'A2', name:'Strategy 1a', rules:[{ev:10, mov:20, maxMov:30, dir:'favor'},{ev:25, mov:10, maxMov:30, dir:'favor'},{ev:40, mov:0, maxMov:30, dir:'favor'}] },
+  { id:'B2', name:'Strategy 2a', rules:[{ev:15, mov:20, maxMov:30, dir:'favor'},{ev:25, mov:15, maxMov:30, dir:'favor'}] },
 ];
 
 function loadStrategies(){
@@ -1254,6 +1256,7 @@ function ruleMatchesRecord(rule, r){
   if(rule.dir==='against' && r.movFavor!==false) return false;
   if(r.ev < rule.ev) return false;
   if(absMov < rule.mov) return false;
+  if(rule.maxMov!=null && absMov >= rule.maxMov) return false;
   return true;
 }
 
