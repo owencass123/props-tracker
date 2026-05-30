@@ -941,10 +941,14 @@ function buildBookTable(base){
   const tdStyle='padding:7px 12px;text-align:center;';
 
   const cols = [
-    {label:'Moved In Favor',     fn:r=>r.movFavor===true},
-    {label:'In Favor 10+',       fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=10},
-    {label:'Moved Against',      fn:r=>r.movFavor===false},
-    {label:'Against 10+',        fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'Moved In Favor',  fn:r=>r.movFavor===true},
+    {label:'In Favor 10+',    fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'In Favor 20+',    fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=20},
+    {label:'In Favor 30+',    fn:r=>r.movFavor===true&&r.movement!==null&&Math.abs(r.movement)>=30},
+    {label:'Moved Against',   fn:r=>r.movFavor===false},
+    {label:'Against 10+',     fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=10},
+    {label:'Against 20+',     fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=20},
+    {label:'Against 30+',     fn:r=>r.movFavor===false&&r.movement!==null&&Math.abs(r.movement)>=30},
   ];
 
   function stats(arr){
