@@ -795,8 +795,11 @@ function buildMovTable(base){
     {label:'Any',   lo:1,  hi:Infinity},
     {label:'1–5',   lo:1,  hi:5},
     {label:'6–10',  lo:6,  hi:10},
-    {label:'11–20', lo:11, hi:20},
-    {label:'21+',   lo:21, hi:Infinity},
+    {label:'11–15', lo:11, hi:15},
+    {label:'16–20', lo:16, hi:20},
+    {label:'21–25', lo:21, hi:25},
+    {label:'26–30', lo:26, hi:30},
+    {label:'30+',   lo:30, hi:Infinity},
   ];
 
   function stats(arr){
