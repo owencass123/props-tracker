@@ -1735,9 +1735,9 @@ function getFilteredForDisplay(){
 
 // ── by line table ─────────────────────────────────────────────────────────────
 function buildLineTable(base){
-  const evMin   = parseFloat(document.getElementById('line-ev').value)  || 0;
-  const dir     = document.getElementById('line-dir').value;
-  const movMin  = parseFloat(document.getElementById('line-mov').value) || 0;
+  const evMin  = parseFloat(document.getElementById('line-ev').value)  || 0;
+  const dir    = document.getElementById('line-dir').value;
+  const movMin = parseFloat(document.getElementById('line-mov').value) || 0;
 
   const graded = base.filter(r=>{
     if(r.result!=='Win'&&r.result!=='Loss') return false;
@@ -1749,43 +1749,6 @@ function buildLineTable(base){
     return true;
   });
 
-  // Collect all unique line values and sort numerically
-  const lineSet = new Set(graded.map(r=>r.line).filter(v=>v!==null));
-  const lines = [...lineSet].sort((a,b)=>a-b);
-
-  if(!lines.length){
-    document.getElementById('line-table').innerHTML='<p style="color:var(--sub)">No graded data matches these filters.</p>';
-    return;
-  }
-
-  const thS='padding:8px 12px;text-align:center;';
-  const tdS='padding:7px 12px;text-align:center;';
-
-  let html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;">
-    <thead>
-      <tr style="border-bottom:2px solid var(--border)">
-        <th style="padding:8px 12px;text-align:left">Line</th>
-        <th style="${thS}">Bets</th>
-        <th style="${thS}">W</th>
-        <th style="${thS}">L</th>
-        <th style="${thS}">Win%</th>
-        <th style="${thS}">Avg EV%</th>
-        <th style="${thS}">Avg Move</th>
-        <th style="${thS}">Avg Odds</th>
-        <th style="${thS}">$/bet</th>
-      </tr>
-    </thead><tbody>`;
-
-  // Totals
-  const totW = graded.filter(r=>r.result==='Win').length;
-  const totL = graded.filter(r=>r.result==='Loss').length;
-  const totN = totW+totL;
-  const totPct = totN ? (totW/totN*100).toFixed(1)+'%' : '—';
-  const totAvgEv = graded.length ? (graded.reduce((s,r)=>s+(r.ev||0),0)/graded.length).toFixed(1) : '—';
-  const totAvgMov = graded.filter(r=>r.movement!==null).length
-    ? (graded.filter(r=>r.movement!==null).reduce((s,r)=>s+Math.abs(r.movement),0)/graded.filter(r=>r.movement!==null).length).toFixed(1)
-    : '—';
-
   function avgOdds(recs){
     const odds = recs.map(r=>r.lastOdds!==null?r.lastOdds:r.firstOdds).filter(o=>o!==null);
     if(!odds.length) return null;
@@ -1794,10 +1757,10 @@ function buildLineTable(base){
   }
   function fmtOdds(o){ return o===null?'—':(o>0?'+':'')+o; }
   function dollarPerBet(recs){
-    const g = recs.filter(r=>r.result==='Win'||r.result==='Loss');
+    const g=recs.filter(r=>r.result==='Win'||r.result==='Loss');
     if(!g.length) return null;
-    const pnl = g.reduce((s,r)=>{
-      const o = r.lastOdds!==null?r.lastOdds:r.firstOdds;
+    const pnl=g.reduce((s,r)=>{
+      const o=r.lastOdds!==null?r.lastOdds:r.firstOdds;
       if(o===null) return s;
       if(r.result==='Win') return s+(o>0?o:100/Math.abs(o)*100)/100;
       return s-1;
@@ -1805,49 +1768,85 @@ function buildLineTable(base){
     return (pnl/g.length*100).toFixed(1);
   }
 
-  const totOdds = avgOdds(graded);
-  const totDpb = dollarPerBet(graded);
-  const totColor = totDpb!==null&&parseFloat(totDpb)>0?'var(--accent)':totDpb!==null?'var(--red)':'var(--text)';
-  html+=`<tr style="background:#1e2130;border-bottom:2px solid var(--border);font-weight:700">
-    <td style="padding:8px 12px">All Lines</td>
-    <td style="${tdS}">${totN}</td>
-    <td style="${tdS}" class="win">${totW}</td>
-    <td style="${tdS}" class="loss">${totL}</td>
-    <td style="${tdS}">${totPct}</td>
-    <td style="${tdS}">${totAvgEv}%</td>
-    <td style="${tdS}">${totAvgMov}</td>
-    <td style="${tdS}">${fmtOdds(totOdds)}</td>
-    <td style="${tdS};color:${totColor}">${totDpb!==null?'$'+totDpb:'—'}</td>
-  </tr>`;
+  function buildSection(recs, prefix){
+    const lineSet = new Set(recs.map(r=>r.line).filter(v=>v!==null));
+    const lines = [...lineSet].sort((a,b)=>a-b);
+    if(!lines.length) return '<p style="color:var(--sub);margin:8px 0 16px">No graded data matches these filters.</p>';
 
-  lines.forEach(line=>{
-    const recs = graded.filter(r=>r.line===line);
-    const w = recs.filter(r=>r.result==='Win').length;
-    const l = recs.filter(r=>r.result==='Loss').length;
-    const n = w+l;
-    const pct = n?(w/n*100).toFixed(1)+'%':'—';
-    const avgEv = recs.length?(recs.reduce((s,r)=>s+(r.ev||0),0)/recs.length).toFixed(1):'—';
-    const movRecs = recs.filter(r=>r.movement!==null);
-    const avgMov = movRecs.length?(movRecs.reduce((s,r)=>s+Math.abs(r.movement),0)/movRecs.length).toFixed(1):'—';
-    const ao = avgOdds(recs);
-    const dpb = dollarPerBet(recs);
-    const pctColor = n>=20&&parseFloat(pct)>=60?'var(--accent)':n>=20&&parseFloat(pct)<50?'var(--red)':'var(--text)';
-    const dpbColor = dpb!==null&&parseFloat(dpb)>0?'var(--accent)':dpb!==null?'var(--red)':'var(--text)';
-    html+=`<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:7px 12px;font-weight:700">o${line}</td>
-      <td style="${tdS};color:var(--sub)">${n}</td>
-      <td style="${tdS}" class="win">${w}</td>
-      <td style="${tdS}" class="loss">${l}</td>
-      <td style="${tdS};font-weight:600;color:${pctColor}">${pct}</td>
-      <td style="${tdS}">${avgEv}%</td>
-      <td style="${tdS}">${avgMov}</td>
-      <td style="${tdS}">${fmtOdds(ao)}</td>
-      <td style="${tdS};color:${dpbColor}">${dpb!==null?'$'+dpb:'—'}</td>
+    const thS='padding:8px 12px;text-align:center;';
+    const tdS='padding:7px 12px;text-align:center;';
+
+    let html=`<div style="overflow-x:auto;margin-bottom:24px"><table style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border)">
+          <th style="padding:8px 12px;text-align:left">Line</th>
+          <th style="${thS}">Bets</th>
+          <th style="${thS}">W</th><th style="${thS}">L</th>
+          <th style="${thS}">Win%</th>
+          <th style="${thS}">Avg EV%</th>
+          <th style="${thS}">Avg Move</th>
+          <th style="${thS}">Avg Odds</th>
+          <th style="${thS}">$/bet</th>
+        </tr>
+      </thead><tbody>`;
+
+    // Totals row
+    const totW=recs.filter(r=>r.result==='Win').length;
+    const totL=recs.filter(r=>r.result==='Loss').length;
+    const totN=totW+totL;
+    const totPct=totN?(totW/totN*100).toFixed(1)+'%':'—';
+    const totAvgEv=recs.length?(recs.reduce((s,r)=>s+(r.ev||0),0)/recs.length).toFixed(1):'—';
+    const movR=recs.filter(r=>r.movement!==null);
+    const totAvgMov=movR.length?(movR.reduce((s,r)=>s+Math.abs(r.movement),0)/movR.length).toFixed(1):'—';
+    const totOdds=avgOdds(recs);
+    const totDpb=dollarPerBet(recs);
+    const totColor=totDpb!==null&&parseFloat(totDpb)>0?'var(--accent)':totDpb!==null?'var(--red)':'var(--text)';
+    html+=`<tr style="background:#1e2130;border-bottom:2px solid var(--border);font-weight:700">
+      <td style="padding:8px 12px">All Lines</td>
+      <td style="${tdS}">${totN}</td>
+      <td style="${tdS}" class="win">${totW}</td><td style="${tdS}" class="loss">${totL}</td>
+      <td style="${tdS}">${totPct}</td>
+      <td style="${tdS}">${totAvgEv}%</td>
+      <td style="${tdS}">${totAvgMov}</td>
+      <td style="${tdS}">${fmtOdds(totOdds)}</td>
+      <td style="${tdS};color:${totColor}">${totDpb!==null?'$'+totDpb:'—'}</td>
     </tr>`;
-  });
 
-  html+='</tbody></table></div>';
-  document.getElementById('line-table').innerHTML=html;
+    lines.forEach(line=>{
+      const r2=recs.filter(r=>r.line===line);
+      const w=r2.filter(r=>r.result==='Win').length;
+      const l=r2.filter(r=>r.result==='Loss').length;
+      const n=w+l;
+      const pct=n?(w/n*100).toFixed(1)+'%':'—';
+      const avgEv=r2.length?(r2.reduce((s,r)=>s+(r.ev||0),0)/r2.length).toFixed(1):'—';
+      const mr=r2.filter(r=>r.movement!==null);
+      const avgMov=mr.length?(mr.reduce((s,r)=>s+Math.abs(r.movement),0)/mr.length).toFixed(1):'—';
+      const ao=avgOdds(r2);
+      const dpb=dollarPerBet(r2);
+      const pctColor=n>=20&&parseFloat(pct)>=60?'var(--accent)':n>=20&&parseFloat(pct)<50?'var(--red)':'var(--text)';
+      const dpbColor=dpb!==null&&parseFloat(dpb)>0?'var(--accent)':dpb!==null?'var(--red)':'var(--text)';
+      html+=`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 12px;font-weight:700">${prefix}${line}</td>
+        <td style="${tdS};color:var(--sub)">${n}</td>
+        <td style="${tdS}" class="win">${w}</td><td style="${tdS}" class="loss">${l}</td>
+        <td style="${tdS};font-weight:600;color:${pctColor}">${pct}</td>
+        <td style="${tdS}">${avgEv}%</td>
+        <td style="${tdS}">${avgMov}</td>
+        <td style="${tdS}">${fmtOdds(ao)}</td>
+        <td style="${tdS};color:${dpbColor}">${dpb!==null?'$'+dpb:'—'}</td>
+      </tr>`;
+    });
+    html+='</tbody></table></div>';
+    return html;
+  }
+
+  const overRecs  = graded.filter(r=>r.side==='Over');
+  const underRecs = graded.filter(r=>r.side==='Under');
+
+  let html = '<h3 style="margin:0 0 8px;color:var(--accent)">Over</h3>' + buildSection(overRecs, 'o');
+  html    += '<h3 style="margin:0 0 8px;color:var(--sub)">Under</h3>'   + buildSection(underRecs, 'u');
+
+  document.getElementById('line-table').innerHTML = html;
 }
 
 function refresh(){
