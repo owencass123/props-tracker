@@ -604,6 +604,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <div class="filter-group">
         <label>EV% &ge;</label>
         <select id="line-ev">
+          <option value="-50">-50%+</option>
+          <option value="-40">-40%+</option>
+          <option value="-30">-30%+</option>
+          <option value="-20">-20%+</option>
+          <option value="-10">-10%+</option>
+          <option value="-5">-5%+</option>
           <option value="0">0%+</option>
           <option value="5">5%+</option>
           <option value="10" selected>10%+</option>
@@ -612,6 +618,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <option value="25">25%+</option>
           <option value="30">30%+</option>
           <option value="40">40%+</option>
+          <option value="50">50%+</option>
         </select>
       </div>
       <div class="filter-group">
@@ -1735,7 +1742,7 @@ function getFilteredForDisplay(){
 
 // ── by line table ─────────────────────────────────────────────────────────────
 function buildLineTable(base){
-  const evMin  = parseFloat(document.getElementById('line-ev').value)  || 0;
+  const evMin  = parseFloat(document.getElementById('line-ev').value);
   const dir    = document.getElementById('line-dir').value;
   const movMin = parseFloat(document.getElementById('line-mov').value) || 0;
 
