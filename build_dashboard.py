@@ -555,6 +555,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="tab" onclick="showTab('combo')">Combined</button>
     <button class="tab" onclick="showTab('book')">By Sportsbook</button>
     <button class="tab" onclick="showTab('player')">By Player</button>
+    <button class="tab" onclick="showTab('line')">By Line</button>
     <button class="tab" onclick="showTab('picks')">Picks</button>
     <button class="tab" onclick="showTab('raw')">Raw Data</button>
   </div>
@@ -591,6 +592,50 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div id="tab-player" class="tab-panel section">
     <h2>By Player</h2>
     <div id="player-content"></div>
+  </div>
+
+  <!-- By Line -->
+  <div id="tab-line" class="tab-panel section">
+    <h2>Win Rate by Strikeout Line</h2>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:14px">
+      Breakdown by each half-number line. Use the filters below to narrow by EV% and movement thresholds.
+    </p>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
+      <div class="filter-group">
+        <label>EV% &ge;</label>
+        <select id="line-ev">
+          <option value="0">0%+</option>
+          <option value="5">5%+</option>
+          <option value="10" selected>10%+</option>
+          <option value="15">15%+</option>
+          <option value="20">20%+</option>
+          <option value="25">25%+</option>
+          <option value="30">30%+</option>
+          <option value="40">40%+</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Movement direction</label>
+        <select id="line-dir">
+          <option value="all">Any</option>
+          <option value="favor">In Favor</option>
+          <option value="against">Against</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Movement pts &ge;</label>
+        <select id="line-mov">
+          <option value="0">Any</option>
+          <option value="5">5+</option>
+          <option value="10">10+</option>
+          <option value="15">15+</option>
+          <option value="20">20+</option>
+          <option value="25">25+</option>
+          <option value="30">30+</option>
+        </select>
+      </div>
+    </div>
+    <div id="line-table"></div>
   </div>
 
   <!-- Picks -->
@@ -1688,6 +1733,123 @@ function getFilteredForDisplay(){
   });
 }
 
+// ── by line table ─────────────────────────────────────────────────────────────
+function buildLineTable(base){
+  const evMin   = parseFloat(document.getElementById('line-ev').value)  || 0;
+  const dir     = document.getElementById('line-dir').value;
+  const movMin  = parseFloat(document.getElementById('line-mov').value) || 0;
+
+  const graded = base.filter(r=>{
+    if(r.result!=='Win'&&r.result!=='Loss') return false;
+    if(r.ev===null||r.ev<evMin) return false;
+    if(dir==='favor'   && r.movFavor!==true)  return false;
+    if(dir==='against' && r.movFavor!==false) return false;
+    const absMov = r.movement!==null?Math.abs(r.movement):0;
+    if(absMov<movMin) return false;
+    return true;
+  });
+
+  // Collect all unique line values and sort numerically
+  const lineSet = new Set(graded.map(r=>r.line).filter(v=>v!==null));
+  const lines = [...lineSet].sort((a,b)=>a-b);
+
+  if(!lines.length){
+    document.getElementById('line-table').innerHTML='<p style="color:var(--sub)">No graded data matches these filters.</p>';
+    return;
+  }
+
+  const thS='padding:8px 12px;text-align:center;';
+  const tdS='padding:7px 12px;text-align:center;';
+
+  let html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;">
+    <thead>
+      <tr style="border-bottom:2px solid var(--border)">
+        <th style="padding:8px 12px;text-align:left">Line</th>
+        <th style="${thS}">Bets</th>
+        <th style="${thS}">W</th>
+        <th style="${thS}">L</th>
+        <th style="${thS}">Win%</th>
+        <th style="${thS}">Avg EV%</th>
+        <th style="${thS}">Avg Move</th>
+        <th style="${thS}">Avg Odds</th>
+        <th style="${thS}">$/bet</th>
+      </tr>
+    </thead><tbody>`;
+
+  // Totals
+  const totW = graded.filter(r=>r.result==='Win').length;
+  const totL = graded.filter(r=>r.result==='Loss').length;
+  const totN = totW+totL;
+  const totPct = totN ? (totW/totN*100).toFixed(1)+'%' : '—';
+  const totAvgEv = graded.length ? (graded.reduce((s,r)=>s+(r.ev||0),0)/graded.length).toFixed(1) : '—';
+  const totAvgMov = graded.filter(r=>r.movement!==null).length
+    ? (graded.filter(r=>r.movement!==null).reduce((s,r)=>s+Math.abs(r.movement),0)/graded.filter(r=>r.movement!==null).length).toFixed(1)
+    : '—';
+
+  function avgOdds(recs){
+    const odds = recs.map(r=>r.lastOdds!==null?r.lastOdds:r.firstOdds).filter(o=>o!==null);
+    if(!odds.length) return null;
+    const avgDec = odds.reduce((s,o)=>s+(o>0?1+o/100:1+100/Math.abs(o)),0)/odds.length;
+    return avgDec>=2?Math.round((avgDec-1)*100):Math.round(-100/(avgDec-1));
+  }
+  function fmtOdds(o){ return o===null?'—':(o>0?'+':'')+o; }
+  function dollarPerBet(recs){
+    const g = recs.filter(r=>r.result==='Win'||r.result==='Loss');
+    if(!g.length) return null;
+    const pnl = g.reduce((s,r)=>{
+      const o = r.lastOdds!==null?r.lastOdds:r.firstOdds;
+      if(o===null) return s;
+      if(r.result==='Win') return s+(o>0?o:100/Math.abs(o)*100)/100;
+      return s-1;
+    },0);
+    return (pnl/g.length*100).toFixed(1);
+  }
+
+  const totOdds = avgOdds(graded);
+  const totDpb = dollarPerBet(graded);
+  const totColor = totDpb!==null&&parseFloat(totDpb)>0?'var(--accent)':totDpb!==null?'var(--red)':'var(--text)';
+  html+=`<tr style="background:#1e2130;border-bottom:2px solid var(--border);font-weight:700">
+    <td style="padding:8px 12px">All Lines</td>
+    <td style="${tdS}">${totN}</td>
+    <td style="${tdS}" class="win">${totW}</td>
+    <td style="${tdS}" class="loss">${totL}</td>
+    <td style="${tdS}">${totPct}</td>
+    <td style="${tdS}">${totAvgEv}%</td>
+    <td style="${tdS}">${totAvgMov}</td>
+    <td style="${tdS}">${fmtOdds(totOdds)}</td>
+    <td style="${tdS};color:${totColor}">${totDpb!==null?'$'+totDpb:'—'}</td>
+  </tr>`;
+
+  lines.forEach(line=>{
+    const recs = graded.filter(r=>r.line===line);
+    const w = recs.filter(r=>r.result==='Win').length;
+    const l = recs.filter(r=>r.result==='Loss').length;
+    const n = w+l;
+    const pct = n?(w/n*100).toFixed(1)+'%':'—';
+    const avgEv = recs.length?(recs.reduce((s,r)=>s+(r.ev||0),0)/recs.length).toFixed(1):'—';
+    const movRecs = recs.filter(r=>r.movement!==null);
+    const avgMov = movRecs.length?(movRecs.reduce((s,r)=>s+Math.abs(r.movement),0)/movRecs.length).toFixed(1):'—';
+    const ao = avgOdds(recs);
+    const dpb = dollarPerBet(recs);
+    const pctColor = n>=20&&parseFloat(pct)>=60?'var(--accent)':n>=20&&parseFloat(pct)<50?'var(--red)':'var(--text)';
+    const dpbColor = dpb!==null&&parseFloat(dpb)>0?'var(--accent)':dpb!==null?'var(--red)':'var(--text)';
+    html+=`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px 12px;font-weight:700">o${line}</td>
+      <td style="${tdS};color:var(--sub)">${n}</td>
+      <td style="${tdS}" class="win">${w}</td>
+      <td style="${tdS}" class="loss">${l}</td>
+      <td style="${tdS};font-weight:600;color:${pctColor}">${pct}</td>
+      <td style="${tdS}">${avgEv}%</td>
+      <td style="${tdS}">${avgMov}</td>
+      <td style="${tdS}">${fmtOdds(ao)}</td>
+      <td style="${tdS};color:${dpbColor}">${dpb!==null?'$'+dpb:'—'}</td>
+    </tr>`;
+  });
+
+  html+='</tbody></table></div>';
+  document.getElementById('line-table').innerHTML=html;
+}
+
 function refresh(){
   const filtered=getFiltered();
   updateCards(filtered);
@@ -1695,6 +1857,7 @@ function refresh(){
   buildMovTable(filtered);
   buildComboTable(filtered);
   buildBookTable(filtered);
+  buildLineTable(filtered);
   const display=getFilteredForDisplay();
   buildPlayerTable(display);
   buildUnitsTable(display);
@@ -1712,6 +1875,9 @@ function showTab(id){
 // ── wire up listeners ─────────────────────────────────────────────────────────
 ['f-side','f-book','f-mov','f-results','f-date-from','f-date-to'].forEach(id=>{
   document.getElementById(id).addEventListener('change', refresh);
+});
+['line-ev','line-dir','line-mov'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', ()=>buildLineTable(getFiltered()));
 });
 
 
