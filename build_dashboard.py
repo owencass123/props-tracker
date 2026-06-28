@@ -196,12 +196,23 @@ def build_records(df, game_times=None):
             line_col   = f"{side} Line"
             result_col = f"{side} Result"
 
-            # Rows where EV% is present = pre-game market (Unabated removes EV%
-            # once a game starts but keeps showing live in-game odds).  Use only
-            # pre-game rows for movement/odds calculation so that post-game live
-            # odds don't corrupt first/last odds and knock picks out of criteria.
-            pre_grp = grp[grp[ev_col].notna()]
-            calc_grp = pre_grp if len(pre_grp) > 0 else grp  # fallback if all blank
+            # Unabated removes EV% once a game starts but keeps streaming live
+            # in-game odds. Early-morning rows also have blank EV% (before
+            # Unabated calculates it). So blank EV% alone can't distinguish
+            # pre-game from post-game rows.
+            #
+            # Strategy: find the LAST row where EV% is non-null — that is the
+            # final pre-game market snapshot. Everything after it is post-game
+            # live odds that should be ignored for movement calculation.
+            # Everything before and including it (even early rows with blank EV%)
+            # is valid pre-game data.
+            ev_mask = grp[ev_col].notna()
+            if ev_mask.any():
+                # iloc position of last row with EV% in the sorted group
+                last_ev_iloc = len(ev_mask) - 1 - ev_mask.values[::-1].argmax()
+                calc_grp = grp.iloc[:last_ev_iloc + 1]
+            else:
+                calc_grp = grp  # no EV% at all — use everything (old data)
 
             ev_vals   = grp[ev_col].dropna()       # EV% always from full history
             line_vals = calc_grp[line_col].dropna()
