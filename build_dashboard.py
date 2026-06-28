@@ -196,10 +196,17 @@ def build_records(df, game_times=None):
             line_col   = f"{side} Line"
             result_col = f"{side} Result"
 
-            ev_vals   = grp[ev_col].dropna()
-            line_vals = grp[line_col].dropna()
+            # Rows where EV% is present = pre-game market (Unabated removes EV%
+            # once a game starts but keeps showing live in-game odds).  Use only
+            # pre-game rows for movement/odds calculation so that post-game live
+            # odds don't corrupt first/last odds and knock picks out of criteria.
+            pre_grp = grp[grp[ev_col].notna()]
+            calc_grp = pre_grp if len(pre_grp) > 0 else grp  # fallback if all blank
 
-            # Closing line = the most recent non-null line value
+            ev_vals   = grp[ev_col].dropna()       # EV% always from full history
+            line_vals = calc_grp[line_col].dropna()
+
+            # Closing line = the most recent non-null line value (pre-game only)
             line_val = float(line_vals.iloc[-1]) if len(line_vals) > 0 else None
 
             # Only use rows that share the closing line for first/last odds.
@@ -207,10 +214,10 @@ def build_records(df, game_times=None):
             # line are irrelevant to the current market and skew movement.
             if line_val is not None:
                 closing_line_str = line_vals.iloc[-1]  # original string e.g. "o5.5"
-                same_line_mask = grp[line_col] == closing_line_str
-                odds_vals = grp.loc[same_line_mask, odds_col].dropna()
+                same_line_mask = calc_grp[line_col] == closing_line_str
+                odds_vals = calc_grp.loc[same_line_mask, odds_col].dropna()
             else:
-                odds_vals = grp[odds_col].dropna()
+                odds_vals = calc_grp[odds_col].dropna()
 
             ev_cur     = float(ev_vals.iloc[-1])   if len(ev_vals)   > 0 else None
             first_odds = float(odds_vals.iloc[0])  if len(odds_vals) > 0 else None
