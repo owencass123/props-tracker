@@ -184,8 +184,11 @@ def build_records(df, game_times=None):
 
         # Deduplicate rows with the same Time value — each scraper run re-appends
         # the full odds history, so identical (Time, Over Odds, Under Odds) rows
-        # accumulate across scrape sessions.
-        grp = grp.drop_duplicates(subset=["Time", "Over Odds", "Under Odds"])
+        # accumulate across scrape sessions. Include EV% in the key so that a
+        # pre-game row with EV% and a post-game row with blank EV% at the same
+        # time/odds are both kept (scraper dedup now does the same).
+        grp = grp.drop_duplicates(subset=["Time", "Over Odds", "Under Odds",
+                                          "Over EV%", "Under EV%"])
         # Sort by proper 24h time (string sort breaks on AM/PM boundary)
         grp = grp.assign(_sort_key=grp["Time"].apply(time_to_minutes))
         grp = grp.sort_values("_sort_key", na_position="last").drop(columns="_sort_key")

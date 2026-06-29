@@ -651,8 +651,13 @@ def _dedup_csv():
         import pandas as pd
         df = pd.read_csv(DATA_FILE, dtype=str, on_bad_lines='warn')
         before = len(df)
+        # Include EV% in dedup key so that a pre-game row with EV% and a
+        # post-game row with blank EV% (same odds/time) are kept as separate
+        # entries. Without this, keep='last' would overwrite the EV% row with
+        # the blank one, causing picks to lose their EV% after game start.
         dedup_cols = ['Player','Matchup','Sportsbook','Date','Time',
-                      'Over Odds','Under Odds','Over Line','Under Line']
+                      'Over Odds','Under Odds','Over Line','Under Line',
+                      'Over EV%','Under EV%']
         existing = [c for c in dedup_cols if c in df.columns]
         df = df.drop_duplicates(subset=existing, keep='last')
         after = len(df)
