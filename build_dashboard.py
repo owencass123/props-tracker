@@ -196,28 +196,10 @@ def build_records(df, game_times=None):
             line_col   = f"{side} Line"
             result_col = f"{side} Result"
 
-            # Unabated removes EV% once a game starts but keeps streaming live
-            # in-game odds. Early-morning rows also have blank EV% (before
-            # Unabated calculates it). So blank EV% alone can't distinguish
-            # pre-game from post-game rows.
-            #
-            # Strategy: find the LAST row where EV% is non-null — that is the
-            # final pre-game market snapshot. Everything after it is post-game
-            # live odds that should be ignored for movement calculation.
-            # Everything before and including it (even early rows with blank EV%)
-            # is valid pre-game data.
-            ev_mask = grp[ev_col].notna()
-            if ev_mask.any():
-                # iloc position of last row with EV% in the sorted group
-                last_ev_iloc = len(ev_mask) - 1 - ev_mask.values[::-1].argmax()
-                calc_grp = grp.iloc[:last_ev_iloc + 1]
-            else:
-                calc_grp = grp  # no EV% at all — use everything (old data)
+            ev_vals   = grp[ev_col].dropna()
+            line_vals = grp[line_col].dropna()
 
-            ev_vals   = grp[ev_col].dropna()       # EV% always from full history
-            line_vals = calc_grp[line_col].dropna()
-
-            # Closing line = the most recent non-null line value (pre-game only)
+            # Closing line = the most recent non-null line value
             line_val = float(line_vals.iloc[-1]) if len(line_vals) > 0 else None
 
             # Only use rows that share the closing line for first/last odds.
@@ -225,10 +207,10 @@ def build_records(df, game_times=None):
             # line are irrelevant to the current market and skew movement.
             if line_val is not None:
                 closing_line_str = line_vals.iloc[-1]  # original string e.g. "o5.5"
-                same_line_mask = calc_grp[line_col] == closing_line_str
-                odds_vals = calc_grp.loc[same_line_mask, odds_col].dropna()
+                same_line_mask = grp[line_col] == closing_line_str
+                odds_vals = grp.loc[same_line_mask, odds_col].dropna()
             else:
-                odds_vals = calc_grp[odds_col].dropna()
+                odds_vals = grp[odds_col].dropna()
 
             ev_cur     = float(ev_vals.iloc[-1])   if len(ev_vals)   > 0 else None
             first_odds = float(odds_vals.iloc[0])  if len(odds_vals) > 0 else None
