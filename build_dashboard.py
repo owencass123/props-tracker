@@ -560,6 +560,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="tab" onclick="showTab('player')">By Player</button>
     <button class="tab" onclick="showTab('line')">By Line</button>
     <button class="tab" onclick="showTab('picks')">Picks</button>
+    <button class="tab" onclick="showTab('potential')">Potential Picks</button>
     <button class="tab" onclick="showTab('raw')">Raw Data</button>
   </div>
 
@@ -650,49 +651,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Picks -->
   <div id="tab-picks" class="tab-panel section">
-    <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— 1 unit = $100 risked</span></h2>
-
-    <!-- Strategy selector -->
-    <div style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--sub);text-transform:uppercase;letter-spacing:.05em">Strategy:</span>
-        <div id="strat-tabs" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-        <button onclick="openStratBuilder(null)"
-          style="padding:5px 12px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--sub);font-size:12px;cursor:pointer">
-          + New
-        </button>
-      </div>
-    </div>
-
-    <!-- Strategy builder panel -->
-    <div id="strat-builder" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <span style="font-weight:600;font-size:14px">Strategy Builder</span>
-        <button onclick="closeStratBuilder()" style="background:none;border:none;color:var(--sub);font-size:18px;cursor:pointer">✕</button>
-      </div>
-      <div style="margin-bottom:12px">
-        <label style="font-size:12px;color:var(--sub)">Strategy Name</label><br>
-        <input id="strat-name-input" type="text" placeholder="My Strategy"
-          style="margin-top:4px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;width:220px">
-      </div>
-      <div style="font-size:12px;color:var(--sub);margin-bottom:8px">
-        Click cells to select rules — a pick qualifies if it matches <b>any</b> selected cell. Green = selected. Win% shown for each combo.
-      </div>
-      <div id="strat-grid"></div>
-      <div style="margin-top:12px;font-size:12px;color:var(--sub)">Selected rules: <span id="strat-rules-summary" style="color:var(--text)">none</span></div>
-      <div style="display:flex;gap:8px;margin-top:14px">
-        <button onclick="saveStrat()"
-          style="padding:7px 18px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600">
-          Save
-        </button>
-        <button id="strat-delete-btn" onclick="deleteStrat()" style="display:none;padding:7px 18px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:13px;cursor:pointer">
-          Delete
-        </button>
-      </div>
-    </div>
-
+    <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor 20+ pts &amp; EV% &ge; 5% · 1 unit = $100 risked</span></h2>
     <div id="units-summary"></div>
     <div id="units-content" style="margin-top:24px"></div>
+  </div>
+
+  <!-- Potential Picks -->
+  <div id="tab-potential" class="tab-panel section">
+    <h2>Potential Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor 10–19 pts &amp; EV% &ge; 5% (not yet in Picks)</span></h2>
+    <div id="potential-content" style="margin-top:16px"></div>
   </div>
 
   <!-- Raw Data -->
@@ -801,7 +768,7 @@ function updateCards(rows){
   const allPicks = [];
   RAW.forEach(r=>{
     const key=r.player+'|'+r.date+'|'+r.side;
-    if(activeClassify(r)===1 && !used.has(key)){ used.add(key); allPicks.push({...r,units:1}); }
+    if(isPick(r) && !used.has(key)){ used.add(key); allPicks.push({...r,units:1}); }
   });
 
   const graded = allPicks.filter(r=>r.result==='Win'||r.result==='Loss');
@@ -1268,86 +1235,27 @@ function buildPlayerTable(base, containerId='player-content'){
   document.getElementById(containerId).innerHTML=html;
 }
 
-// ── units tracker ─────────────────────────────────────────────────────────────
+// ── picks criteria ────────────────────────────────────────────────────────────
 function closingOdds(r){ return r.lastOdds!==null ? r.lastOdds : r.firstOdds; }
 function oddsOk(r){
-  // Exclude picks at -200 or longer (more negative)
   const o = closingOdds(r);
   return o===null || o > -200;
 }
 
-// ── strategy engine ───────────────────────────────────────────────────────────
-const DEFAULT_STRATEGIES = [
-  { id:'A',  name:'Strategy 1',  rules:[{ev:10, mov:20, dir:'favor'},{ev:25, mov:10, dir:'favor'},{ev:40, mov:0, dir:'favor'}] },
-  { id:'B',  name:'Strategy 2',  rules:[{ev:15, mov:20, dir:'favor'},{ev:25, mov:15, dir:'favor'}] },
-  { id:'A2', name:'Strategy 1a', rules:[{ev:10, mov:20, maxMov:30, dir:'favor'},{ev:25, mov:10, maxMov:30, dir:'favor'},{ev:40, mov:0, maxMov:30, dir:'favor'}] },
-  { id:'B2', name:'Strategy 2a', rules:[{ev:15, mov:20, maxMov:30, dir:'favor'},{ev:25, mov:15, maxMov:30, dir:'favor'}] },
-];
-
-function loadStrategies(){
-  // Built-in strategies (A, B) always come from code — never from localStorage.
-  // Only custom strategies (ids not in DEFAULT_STRATEGIES) are persisted.
-  const defaultIds = new Set(DEFAULT_STRATEGIES.map(s=>s.id));
-  let custom = [];
-  try {
-    const s = localStorage.getItem('picks_strategies');
-    if(s){
-      const parsed = JSON.parse(s);
-      if(Array.isArray(parsed)){
-        custom = parsed.filter(s=>s.id && !defaultIds.has(s.id) && Array.isArray(s.rules));
-      }
-    }
-  } catch(e){}
-  return [...DEFAULT_STRATEGIES.map(s=>({...s})), ...custom];
-}
-function saveStrategies(arr){
-  // Only save custom strategies to localStorage; built-ins are always from code.
-  const defaultIds = new Set(DEFAULT_STRATEGIES.map(s=>s.id));
-  const custom = arr.filter(s=>!defaultIds.has(s.id));
-  try { localStorage.setItem('picks_strategies', JSON.stringify(custom)); } catch(e){}
-}
-
-let _strategies = loadStrategies();
-let _activeStratId = _strategies.length ? _strategies[0].id : 'A';
-
-function ruleMatchesRecord(rule, r){
-  if(r.ev===null||r.movFavor===null) return false;
+// Picks: moved in favor 20+ pts AND EV >= 5%
+function isPick(r){
+  if(r.ev===null || r.movFavor!==true) return false;
   if(!oddsOk(r)) return false;
   const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
-  if(rule.dir==='favor'   && r.movFavor!==true)  return false;
-  if(rule.dir==='against' && r.movFavor!==false) return false;
-  if(r.ev < rule.ev) return false;
-  if(absMov < rule.mov) return false;
-  if(rule.maxMov!=null && absMov >= rule.maxMov) return false;
-  return true;
+  return r.ev >= 5 && absMov >= 20;
 }
 
-function activeClassify(r){
-  const strat = _strategies.find(s=>s.id===_activeStratId);
-  if(!strat) return 0;
-  return strat.rules.some(rule=>ruleMatchesRecord(rule, r)) ? 1 : 0;
-}
-
-// kept for updateCards compatibility
-function classifyUnits(r){ return activeClassify(r); }
-
-function renderStratTabs(){
-  const container = document.getElementById('strat-tabs');
-  if(!container) return;
-  container.innerHTML = '';
-  _strategies.forEach(s=>{
-    const active = s.id===_activeStratId;
-    const btn = document.createElement('button');
-    btn.textContent = s.name;
-    btn.style.cssText = `padding:7px 16px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:${active?'600':'400'};
-      border:1px solid ${active?'var(--accent)':'var(--border)'};
-      background:${active?'var(--accent)':'transparent'};
-      color:${active?'#fff':'var(--sub)'}`;
-    btn.onclick = ()=>{ _activeStratId=s.id; renderStratTabs(); refreshPicks(); };
-    btn.ondblclick = ()=>openStratBuilder(s.id);
-    btn.title = 'Double-click to edit';
-    container.appendChild(btn);
-  });
+// Potential Picks: moved in favor 10–19 pts AND EV >= 5% (not already a Pick)
+function isPotentialPick(r){
+  if(r.ev===null || r.movFavor!==true) return false;
+  if(!oddsOk(r)) return false;
+  const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
+  return r.ev >= 5 && absMov >= 10 && absMov < 20;
 }
 
 function refreshPicks(){
@@ -1355,155 +1263,84 @@ function refreshPicks(){
   updateCards(filtered);
   const display = getFilteredForDisplay();
   buildUnitsTable(display);
+  buildPotentialTable(display);
 }
 
-// ── strategy builder ──────────────────────────────────────────────────────────
-let _editingStratId = null;
-let _selectedRules  = []; // {ev, dir, mov}
+// ── potential picks table ─────────────────────────────────────────────────────
+function buildPotentialTable(base){
+  const recs = base.filter(r=>isPotentialPick(r));
 
-const BUILDER_EV_THRESHOLDS = [0,5,10,15,20,25,30,40,50];
-const BUILDER_MOV_COLS = [
-  {label:'In Favor 0+',  dir:'favor',   mov:0},
-  {label:'In Favor 10+', dir:'favor',   mov:10},
-  {label:'In Favor 15+', dir:'favor',   mov:15},
-  {label:'In Favor 20+', dir:'favor',   mov:20},
-  {label:'In Favor 25+', dir:'favor',   mov:25},
-  {label:'In Favor 30+', dir:'favor',   mov:30},
-  {label:'Against 0+',   dir:'against', mov:0},
-  {label:'Against 10+',  dir:'against', mov:10},
-  {label:'Against 15+',  dir:'against', mov:15},
-  {label:'Against 20+',  dir:'against', mov:20},
-  {label:'Against 25+',  dir:'against', mov:25},
-  {label:'Against 30+',  dir:'against', mov:30},
-];
+  const el = document.getElementById('potential-content');
+  if(!recs.length){
+    el.innerHTML='<p style="color:var(--sub);text-align:center;padding:20px">No potential picks right now.</p>';
+    return;
+  }
 
-function ruleKey(ev, dir, mov){
-  return `${ev}|${dir}|${mov}`;
-}
-function ruleKeyFromObj(r){ return ruleKey(r.ev, r.dir, r.mov); }
+  // Group by date, newest first
+  const byDate={};
+  recs.forEach(r=>{ (byDate[r.date]=byDate[r.date]||[]).push(r); });
+  const allDates=[...new Set(recs.map(r=>r.date))].sort((a,b)=>parseDate(b)-parseDate(a));
+  const newestDate = allDates[0]||'';
 
-function builderWinRate(base, ev, dir, mov){
-  const rows = base.filter(r=>{
-    if(r.ev===null||r.ev<ev) return false;
-    if(dir==='favor'   && r.movFavor!==true)  return false;
-    if(dir==='against' && r.movFavor!==false) return false;
-    const absMov = r.movement!==null?Math.abs(r.movement):0;
-    if(absMov<mov) return false;
-    return r.result==='Win'||r.result==='Loss';
-  });
-  const wins = rows.filter(r=>r.result==='Win').length;
-  return {n:rows.length, rate: rows.length ? wins/rows.length : null};
-}
+  let html='';
+  allDates.forEach(date=>{
+    const dateRecs=byDate[date];
+    if(!dateRecs||!dateRecs.length) return;
+    const graded=dateRecs.filter(r=>r.result==='Win'||r.result==='Loss');
+    const wins=graded.filter(r=>r.result==='Win').length;
+    const isToday=date===newestDate;
+    const dgId=('pot_'+date).replace(/[^a-zA-Z0-9]/g,'_');
+    const [mo,dy,yr]=date.split('/');
 
-function renderBuilderGrid(base){
-  const grid = document.getElementById('strat-grid');
-  const selectedKeys = new Set(_selectedRules.map(ruleKeyFromObj));
+    html+=`<div class="date-group${isToday?' open':''}" id="${dgId}">`;
+    html+=`<div class="date-group-hdr" onclick="toggleDG('${dgId}')">`;
+    html+=`<span class="date-group-title">${mo}/${dy}/${yr}</span>`;
+    html+=`<span style="font-size:12px;color:var(--sub)">${graded.length}/${dateRecs.length} graded · ${graded.length?wins+'-'+(graded.length-wins):'—'}</span>`;
+    html+=`<span class="date-group-arrow">▶</span>`;
+    html+=`</div><div class="date-group-body">`;
 
-  let html = '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px">';
-  html += '<thead><tr><th style="padding:6px 10px;text-align:left;color:var(--sub)">EV% \u2265</th>';
-  BUILDER_MOV_COLS.forEach(c=>{
-    html += `<th style="padding:6px 8px;text-align:center;color:var(--sub);white-space:nowrap">${c.label}</th>`;
-  });
-  html += '</tr></thead><tbody>';
+    dateRecs.sort((a,b)=>gameTimeTo24h(a.gameTime||'').localeCompare(gameTimeTo24h(b.gameTime||'')));
 
-  BUILDER_EV_THRESHOLDS.forEach(lo=>{
-    const evLabel = `+${lo}%+`;
-    html += `<tr><td style="padding:6px 10px;font-weight:600;color:var(--text)">${evLabel}</td>`;
-    BUILDER_MOV_COLS.forEach(c=>{
-      const key = ruleKey(lo, c.dir, c.mov);
-      const sel = selectedKeys.has(key);
-      const {n, rate} = builderWinRate(base, lo, c.dir, c.mov);
-      const rateStr = rate!==null ? (rate*100).toFixed(0)+'%' : '—';
-      const nStr    = n ? `(${n})` : '';
-      const bg   = sel ? 'var(--accent)' : (rate!==null&&rate>=0.55?'rgba(0,200,100,0.12)':rate!==null&&rate<0.45?'rgba(255,80,80,0.08)':'transparent');
-      const color= sel ? '#fff' : (rate!==null&&rate>=0.55?'var(--accent)':rate!==null&&rate<0.45?'var(--red)':'var(--sub)');
-      html += `<td onclick="toggleBuilderCell(${lo},'${c.dir}',${c.mov})"
-        data-key="${key}"
-        style="padding:6px 10px;text-align:center;cursor:pointer;border-radius:4px;background:${bg};color:${color};user-select:none">
-        ${rateStr}<br><span style="font-size:10px;opacity:.7">${nStr}</span>
-      </td>`;
+    html+=`<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:1px solid var(--border);color:var(--sub);font-size:11px;text-transform:uppercase">
+        <th style="padding:6px 10px;text-align:left">Player</th>
+        <th style="padding:6px 10px;text-align:center">Time (CT)</th>
+        <th style="padding:6px 10px;text-align:center">Side</th>
+        <th style="padding:6px 10px;text-align:center">Line</th>
+        <th style="padding:6px 10px;text-align:center">EV%</th>
+        <th style="padding:6px 10px;text-align:center">Close Odds</th>
+        <th style="padding:6px 10px;text-align:center">Move</th>
+        <th style="padding:6px 10px;text-align:center">Actual Ks</th>
+        <th style="padding:6px 10px;text-align:center">Result</th>
+      </tr></thead><tbody>`;
+
+    dateRecs.forEach(r=>{
+      const displayName=r.player.replace(/\\s*\\([^)]*\\)/g,'').trim();
+      const sideClass=r.side==='Over'?'over':'under';
+      const evColor=r.ev>=25?'var(--accent)':r.ev>=15?'#86efac':'#fbbf24';
+      const movColor='var(--accent)';
+      const closeOdds=r.lastOdds!=null?fmtOdds(r.lastOdds):'—';
+      const lineStr=r.line!=null?(r.side==='Over'?'o':'u')+r.line:'—';
+      let resBadge='<span style="color:var(--warn)">Pending</span>';
+      if(r.result==='Win')       resBadge='<span class="win">Win ✓</span>';
+      else if(r.result==='Loss') resBadge='<span class="loss">Loss ✗</span>';
+      else if(r.result==='Push') resBadge='<span style="color:var(--warn)">Push</span>';
+      html+=`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600">${displayName}</td>
+        <td style="padding:7px 10px;text-align:center;color:var(--sub);font-size:12px">${fmt12h(r.gameTime||r.time||'')}</td>
+        <td style="padding:7px 10px;text-align:center"><span class="side-pill ${sideClass}">${r.side}</span></td>
+        <td style="padding:7px 10px;text-align:center">${lineStr}</td>
+        <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${r.ev!=null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—'}</b></td>
+        <td style="padding:7px 10px;text-align:center"><b>${closeOdds}</b></td>
+        <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${r.movement!=null?(r.movement>=0?'+':'')+Math.round(r.movement):'—'}</b></td>
+        <td style="padding:7px 10px;text-align:center">${r.actualKs!=null?r.actualKs+' K':'—'}</td>
+        <td style="padding:7px 10px;text-align:center">${resBadge}</td>
+      </tr>`;
     });
-    html += '</tr>';
+    html+=`</tbody></table></div></div>`;
   });
 
-  html += '</tbody></table></div>';
-  grid.innerHTML = html;
-  updateRulesSummary();
-}
-
-function toggleBuilderCell(ev, dir, mov){
-  const key = ruleKey(ev, dir, mov);
-  const idx = _selectedRules.findIndex(r=>ruleKeyFromObj(r)===key);
-  if(idx>=0) _selectedRules.splice(idx,1);
-  else _selectedRules.push({ev, dir, mov});
-  const base = getFilteredForDisplay();
-  renderBuilderGrid(base);
-}
-
-function updateRulesSummary(){
-  const el = document.getElementById('strat-rules-summary');
-  if(!el) return;
-  if(!_selectedRules.length){ el.textContent='none'; return; }
-  el.textContent = _selectedRules.map(r=>{
-    return `EV \u2265${r.ev}% + ${r.dir} mov ${r.mov}+`;
-  }).join(' OR ');
-}
-
-function openStratBuilder(id){
-  _editingStratId = id;
-  const panel     = document.getElementById('strat-builder');
-  const nameInput = document.getElementById('strat-name-input');
-  const deleteBtn = document.getElementById('strat-delete-btn');
-
-  if(id){
-    const s = _strategies.find(x=>x.id===id);
-    nameInput.value  = s.name;
-    _selectedRules   = s.rules.map(r=>({...r}));
-    deleteBtn.style.display = 'inline-block';
-  } else {
-    nameInput.value  = '';
-    _selectedRules   = [];
-    deleteBtn.style.display = 'none';
-  }
-
-  panel.style.display = 'block';
-  const base = getFilteredForDisplay();
-  renderBuilderGrid(base);
-}
-
-function closeStratBuilder(){
-  document.getElementById('strat-builder').style.display='none';
-}
-
-function saveStrat(){
-  const name  = document.getElementById('strat-name-input').value.trim() || 'Custom';
-  if(!_selectedRules.length){ alert('Select at least one cell from the grid.'); return; }
-  const rules = _selectedRules.map(r=>({...r}));
-
-  if(_editingStratId){
-    const s = _strategies.find(x=>x.id===_editingStratId);
-    if(s){ s.name=name; s.rules=rules; }
-  } else {
-    const id = 'custom_'+Date.now();
-    _strategies.push({id, name, rules});
-    _activeStratId = id;
-  }
-  saveStrategies(_strategies);
-  renderStratTabs();
-  closeStratBuilder();
-  refreshPicks();
-}
-
-function deleteStrat(){
-  if(!_editingStratId) return;
-  if(!confirm('Delete this strategy?')) return;
-  _strategies = _strategies.filter(s=>s.id!==_editingStratId);
-  if(!_strategies.length) _strategies = DEFAULT_STRATEGIES.map(s=>({...s}));
-  _activeStratId = _strategies[0].id;
-  saveStrategies(_strategies);
-  renderStratTabs();
-  closeStratBuilder();
-  refreshPicks();
+  el.innerHTML=html;
 }
 
 function calcPnl(result, odds, units){
@@ -1520,14 +1357,12 @@ function calcPnl(result, odds, units){
 function buildUnitsTable(base){
   const UNIT_VAL = 100;
 
-  const strat = _strategies.find(s=>s.id===_activeStratId);
-  const tierDesc = strat ? strat.rules.map(r=>`EV\u2265${r.ev}% + ${r.dir} ${r.mov>0?r.mov+'+':''}`).join(' OR ') : '';
   const tiers = [
     {
       label: '1 Unit',
-      desc:  tierDesc,
+      desc:  'Moved in favor \u226520 pts &amp; EV\u22655%',
       units: 1,
-      fn:    r => activeClassify(r)===1,
+      fn:    r => isPick(r),
     },
   ];
 
@@ -1870,6 +1705,7 @@ function refresh(){
   const display=getFilteredForDisplay();
   buildPlayerTable(display);
   buildUnitsTable(display);
+  buildPotentialTable(display);
   buildRawTable(display);
 }
 
@@ -1890,7 +1726,6 @@ function showTab(id){
 });
 
 
-renderStratTabs();
 refresh();
 </script>
 </body>
