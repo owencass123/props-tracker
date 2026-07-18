@@ -1242,16 +1242,44 @@ function oddsOk(r){
   return o===null || o > -200;
 }
 
-// Picks: moved in favor 20+ pts AND EV >= 5%
+function pickKey(r){ return r.player+'|'+r.date+'|'+r.side; }
+
+// Manual promotions persisted in localStorage
+function loadManualPicks(){
+  try {
+    const s = localStorage.getItem('manual_picks');
+    return s ? new Set(JSON.parse(s)) : new Set();
+  } catch(e){ return new Set(); }
+}
+function saveManualPicks(){
+  try { localStorage.setItem('manual_picks', JSON.stringify([..._manualPicks])); } catch(e){}
+}
+let _manualPicks = loadManualPicks();
+
+function addManualPick(r){
+  _manualPicks.add(pickKey(r));
+  saveManualPicks();
+  refresh();
+}
+function removeManualPick(r){
+  _manualPicks.delete(pickKey(r));
+  saveManualPicks();
+  refresh();
+}
+function isManualPick(r){ return _manualPicks.has(pickKey(r)); }
+
+// Picks: moved in favor 20+ pts AND EV >= 5%, OR manually promoted
 function isPick(r){
+  if(isManualPick(r)) return true;
   if(r.ev===null || r.movFavor!==true) return false;
   if(!oddsOk(r)) return false;
   const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
   return r.ev >= 5 && absMov >= 20;
 }
 
-// Potential Picks: moved in favor 10–19 pts AND EV >= 5% (not already a Pick)
+// Potential Picks: moved in favor 10–19 pts AND EV >= 5%, not already a Pick
 function isPotentialPick(r){
+  if(isPick(r)) return false;
   if(r.ev===null || r.movFavor!==true) return false;
   if(!oddsOk(r)) return false;
   const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
@@ -1312,19 +1340,24 @@ function buildPotentialTable(base){
         <th style="padding:6px 10px;text-align:center">Move</th>
         <th style="padding:6px 10px;text-align:center">Actual Ks</th>
         <th style="padding:6px 10px;text-align:center">Result</th>
+        <th style="padding:6px 10px;text-align:center"></th>
       </tr></thead><tbody>`;
 
-    dateRecs.forEach(r=>{
+    dateRecs.forEach((r,i)=>{
       const displayName=r.player.replace(/\\s*\\([^)]*\\)/g,'').trim();
       const sideClass=r.side==='Over'?'over':'under';
       const evColor=r.ev>=25?'var(--accent)':r.ev>=15?'#86efac':'#fbbf24';
       const movColor='var(--accent)';
       const closeOdds=r.lastOdds!=null?fmtOdds(r.lastOdds):'—';
       const lineStr=r.line!=null?(r.side==='Over'?'o':'u')+r.line:'—';
+      const recIdx = RAW.indexOf(r);
       let resBadge='<span style="color:var(--warn)">Pending</span>';
       if(r.result==='Win')       resBadge='<span class="win">Win ✓</span>';
       else if(r.result==='Loss') resBadge='<span class="loss">Loss ✗</span>';
       else if(r.result==='Push') resBadge='<span style="color:var(--warn)">Push</span>';
+      const addBtn=`<button onclick="addManualPick(RAW[${RAW.indexOf(r)}])"
+        style="padding:4px 10px;border-radius:5px;border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:11px;cursor:pointer;white-space:nowrap">
+        + Add to Picks</button>`;
       html+=`<tr style="border-bottom:1px solid var(--border)">
         <td style="padding:7px 10px;font-weight:600">${displayName}</td>
         <td style="padding:7px 10px;text-align:center;color:var(--sub);font-size:12px">${fmt12h(r.gameTime||r.time||'')}</td>
@@ -1335,6 +1368,7 @@ function buildPotentialTable(base){
         <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${r.movement!=null?(r.movement>=0?'+':'')+Math.round(r.movement):'—'}</b></td>
         <td style="padding:7px 10px;text-align:center">${r.actualKs!=null?r.actualKs+' K':'—'}</td>
         <td style="padding:7px 10px;text-align:center">${resBadge}</td>
+        <td style="padding:7px 10px;text-align:center">${addBtn}</td>
       </tr>`;
     });
     html+=`</tbody></table></div></div>`;
@@ -1508,6 +1542,7 @@ function buildUnitsTable(base){
         <th style="padding:6px 10px;text-align:center">Actual Ks</th>
         <th style="padding:6px 10px;text-align:center">Result</th>
         <th style="padding:6px 10px;text-align:center">$</th>
+        <th style="padding:6px 10px"></th>
       </tr></thead><tbody>`;
 
       recs.forEach(r=>{
@@ -1520,14 +1555,23 @@ function buildUnitsTable(base){
         const pnlColor=pnl===null?'var(--sub)':pnl>0?'var(--accent)':pnl<0?'var(--red)':'var(--text)';
         const pnlStr=pnl===null?'—':`${pnl>=0?'+':''}$${pnl.toFixed(0)}`;
         const lineStr=r.line!=null?(r.side==='Over'?'o':'u')+r.line:'—';
+        const manual = isManualPick(r);
 
         let resBadge='<span style="color:var(--warn)">Pending</span>';
         if(r.result==='Win')       resBadge='<span class="win">Win ✓</span>';
         else if(r.result==='Loss') resBadge='<span class="loss">Loss ✗</span>';
         else if(r.result==='Push') resBadge='<span style="color:var(--warn)">Push</span>';
 
+        const removeBtn = manual
+          ? `<button onclick="removeManualPick(RAW[${RAW.indexOf(r)}])" title="Remove manual pick"
+              style="padding:3px 8px;border-radius:5px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;cursor:pointer">✕ Remove</button>`
+          : '';
+        const manualTag = manual
+          ? `<span style="font-size:10px;color:var(--warn);margin-left:4px" title="Manually added">★</span>`
+          : '';
+
         html+=`<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:7px 10px;font-weight:600">${displayName}</td>
+          <td style="padding:7px 10px;font-weight:600">${displayName}${manualTag}</td>
           <td style="padding:7px 10px;text-align:center;color:var(--sub);font-size:12px">${fmt12h(r.gameTime||r.time||'')}</td>
           <td style="padding:7px 10px;text-align:center"><span class="side-pill ${sideClass}">${r.side}</span></td>
           <td style="padding:7px 10px;text-align:center">${lineStr}</td>
@@ -1538,6 +1582,7 @@ function buildUnitsTable(base){
           <td style="padding:7px 10px;text-align:center">${r.actualKs!=null?r.actualKs+' K':'—'}</td>
           <td style="padding:7px 10px;text-align:center">${resBadge}</td>
           <td style="padding:7px 10px;text-align:center;font-weight:700"><span style="color:${pnlColor}">${pnlStr}</span></td>
+          <td style="padding:7px 10px;text-align:center">${removeBtn}</td>
         </tr>`;
       });
 
