@@ -855,8 +855,8 @@ function pickKey(r){ return r.player+'|'+r.date+'|'+r.side; }
 // Hardcoded picks — always count regardless of movement/EV criteria
 // Add player|MM/DD/YYYY|Over or Under
 const HARDCODED_PICKS = new Set([
-  'Jake Bennett(P)|07/17/2026|Over',
-  'Will Warren(P)|07/12/2026|Over',
+  'Jake Bennett(P)|07/17/2026|Under',
+  'Will Warren(P)|07/12/2026|Under',
 ]);
 function isHardcodedPick(r){ return HARDCODED_PICKS.has(pickKey(r)); }
 
