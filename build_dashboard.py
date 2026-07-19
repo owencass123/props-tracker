@@ -1244,6 +1244,14 @@ function oddsOk(r){
 
 function pickKey(r){ return r.player+'|'+r.date+'|'+r.side; }
 
+// Hardcoded picks — always count regardless of movement/EV criteria
+// Add player|MM/DD/YYYY|Over or Under
+const HARDCODED_PICKS = new Set([
+  'Jake Bennett(P)|07/17/2026|Over',
+  'Will Warren(P)|07/12/2026|Over',
+]);
+function isHardcodedPick(r){ return HARDCODED_PICKS.has(pickKey(r)); }
+
 // Manual promotions persisted in localStorage
 function loadManualPicks(){
   try {
@@ -1268,8 +1276,9 @@ function removeManualPick(r){
 }
 function isManualPick(r){ return _manualPicks.has(pickKey(r)); }
 
-// Picks: moved in favor 20+ pts AND EV >= 5%, OR manually promoted
+// Picks: moved in favor 20+ pts AND EV >= 5%, OR hardcoded, OR manually promoted
 function isPick(r){
+  if(isHardcodedPick(r)) return true;
   if(isManualPick(r)) return true;
   if(r.ev===null || r.movFavor!==true) return false;
   if(!oddsOk(r)) return false;
