@@ -327,13 +327,9 @@ def build_consensus_records(records):
         key = (r["player"], r["date"], r["side"])
         groups.setdefault(key, []).append(r)
 
-    def _book_has_signal(r):
-        """Return True if this book has any meaningful pick signal (10+ pts)."""
-        if r.get('ev') is None: return False
-        if r.get('movFavor') is not True: return False
-        lo = r.get('lastOdds') if r.get('lastOdds') is not None else r.get('firstOdds')
-        if lo is not None and lo <= -200: return False
-        return r['ev'] >= 5 and abs(r.get('movement') or 0) >= 10
+    def _is_favorable_mover(r):
+        """True if this book moved its odds in the favorable direction."""
+        return r.get('movFavor') is True and r.get('movement') is not None
 
     consensus = []
     for (player, date, side), recs in groups.items():
@@ -358,9 +354,10 @@ def build_consensus_records(records):
         avg_mov    = _avg([r["movement"]   for r in dom_recs])
         mov_favor  = _in_favor(avg_first, avg_last)
 
-        # Best individual book signal at dominant line (for pick detection/display)
-        pick_books = [r for r in dom_recs if _book_has_signal(r)]
-        best = max(pick_books, key=lambda r: abs(r.get('movement') or 0)) if pick_books else None
+        # Average across only the books that moved in the favorable direction.
+        # Excluding flat-line books from this average prevents them from diluting
+        # the signal, while still using multi-book data (not a single book).
+        active = [r for r in dom_recs if _is_favorable_mover(r)]
 
         actual_ks = next((r["actualKs"] for r in dom_recs if r["actualKs"] is not None), None)
 
@@ -390,12 +387,13 @@ def build_consensus_records(records):
             "movFavor":  mov_favor,
             "result":    result,
             "actualKs":  actual_ks,
-            # Best qualifying individual book at dominant line (pick detection & display)
-            "pickMov":       round(best["movement"], 1) if best and best.get("movement") is not None else None,
-            "pickFirstOdds": best.get("firstOdds") if best else None,
-            "pickLastOdds":  best.get("lastOdds")  if best else None,
-            "pickEv":        best.get("ev")         if best else None,
-            "pickMovFavor":  best.get("movFavor")   if best else None,
+            # Average of favorable movers (books that moved in the right direction).
+            # Used for pick detection/display so flat-line books don't dilute the signal.
+            "pickMov":       round(_avg([r["movement"] for r in active]), 1) if active else None,
+            "pickFirstOdds": _avg_odds([r["firstOdds"] for r in active]) if active else None,
+            "pickLastOdds":  _avg_odds([r["lastOdds"]  for r in active]) if active else None,
+            "pickEv":        avg_ev,   # consensus EV across all books
+            "pickMovFavor":  True if active else None,
         })
 
     return consensus
