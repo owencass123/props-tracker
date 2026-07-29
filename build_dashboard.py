@@ -33,11 +33,9 @@ def load_data():
 
     def to_int(x):
         if pd.isna(x): return np.nan
-        s = str(x).strip()
-        try: return int(s)
-        except:
-            try: return int(s.replace("+",""))
-            except: return np.nan
+        s = str(x).strip().replace("+", "")
+        try: return int(float(s))
+        except: return np.nan
 
     def parse_line(x):
         if pd.isna(x): return np.nan
@@ -318,8 +316,8 @@ def build_consensus_records(records):
     (player, date, side).  Rules:
       • Find the line used by the most sportsbooks.
       • If two lines tie in book count → skip (no grade).
-      • Only include groups with ≥ 3 books at the dominant line.
-      • Average EV%, firstOdds, lastOdds, movement across those books.
+      • Average EV%, firstOdds, lastOdds, movement across all books at dominant line.
+      • Also track the best individual book signal (pick* fields) for pick detection.
       • Re-derive Win/Loss from actual Ks vs dominant line.
     """
     from collections import Counter
@@ -328,6 +326,14 @@ def build_consensus_records(records):
     for r in records:
         key = (r["player"], r["date"], r["side"])
         groups.setdefault(key, []).append(r)
+
+    def _book_has_signal(r):
+        """Return True if this book has any meaningful pick signal (10+ pts)."""
+        if r.get('ev') is None: return False
+        if r.get('movFavor') is not True: return False
+        lo = r.get('lastOdds') if r.get('lastOdds') is not None else r.get('firstOdds')
+        if lo is not None and lo <= -200: return False
+        return r['ev'] >= 5 and abs(r.get('movement') or 0) >= 10
 
     consensus = []
     for (player, date, side), recs in groups.items():
@@ -346,15 +352,15 @@ def build_consensus_records(records):
         dominant_line = dominant_lines[0]
         dom_recs = [r for r in recs if r["line"] == dominant_line]
 
-        # Need ≥ 3 books
-        if len(dom_recs) < 3:
-            continue
-
         avg_ev     = _avg([r["ev"]         for r in dom_recs])
         avg_first  = _avg_odds([r["firstOdds"]  for r in dom_recs])
         avg_last   = _avg_odds([r["lastOdds"]   for r in dom_recs])
         avg_mov    = _avg([r["movement"]   for r in dom_recs])
         mov_favor  = _in_favor(avg_first, avg_last)
+
+        # Best individual book signal at dominant line (for pick detection/display)
+        pick_books = [r for r in dom_recs if _book_has_signal(r)]
+        best = max(pick_books, key=lambda r: abs(r.get('movement') or 0)) if pick_books else None
 
         actual_ks = next((r["actualKs"] for r in dom_recs if r["actualKs"] is not None), None)
 
@@ -384,6 +390,12 @@ def build_consensus_records(records):
             "movFavor":  mov_favor,
             "result":    result,
             "actualKs":  actual_ks,
+            # Best qualifying individual book at dominant line (pick detection & display)
+            "pickMov":       round(best["movement"], 1) if best and best.get("movement") is not None else None,
+            "pickFirstOdds": best.get("firstOdds") if best else None,
+            "pickLastOdds":  best.get("lastOdds")  if best else None,
+            "pickEv":        best.get("ev")         if best else None,
+            "pickMovFavor":  best.get("movFavor")   if best else None,
         })
 
     return consensus
@@ -1242,6 +1254,21 @@ function oddsOk(r){
   return o===null || o > -200;
 }
 
+// Best individual book signal for this record; falls back to consensus averages
+function _pickSignal(r){
+  if(r.pickMov!==null && r.pickMov!==undefined){
+    return {ev:r.pickEv, mov:r.pickMov, movFavor:r.pickMovFavor,
+            lastOdds:r.pickLastOdds, firstOdds:r.pickFirstOdds};
+  }
+  return {ev:r.ev, mov:r.movement, movFavor:r.movFavor,
+          lastOdds:r.lastOdds, firstOdds:r.firstOdds};
+}
+// Closing odds using pick signal
+function pickClosingOdds(r){
+  const s=_pickSignal(r);
+  return s.lastOdds!==null&&s.lastOdds!==undefined ? s.lastOdds : s.firstOdds;
+}
+
 function pickKey(r){ return r.player+'|'+r.date+'|'+r.side; }
 
 // Hardcoded picks — always count regardless of movement/EV criteria
@@ -1276,23 +1303,27 @@ function removeManualPick(r){
 }
 function isManualPick(r){ return _manualPicks.has(pickKey(r)); }
 
-// Picks: moved in favor 20+ pts AND EV >= 5%, OR hardcoded, OR manually promoted
+// Picks: best book moved in favor 20+ pts AND EV >= 5%, OR hardcoded, OR manually promoted
 function isPick(r){
   if(isHardcodedPick(r)) return true;
   if(isManualPick(r)) return true;
-  if(r.ev===null || r.movFavor!==true) return false;
-  if(!oddsOk(r)) return false;
-  const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
-  return r.ev >= 5 && absMov >= 20;
+  const s=_pickSignal(r);
+  if(s.ev===null||s.movFavor!==true) return false;
+  const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
+  if(o!==null&&o!==undefined&&o<=-200) return false;
+  const absMov=s.mov!==null?Math.abs(s.mov):0;
+  return s.ev>=5 && absMov>=20;
 }
 
-// Potential Picks: moved in favor 10–19 pts AND EV >= 5%, not already a Pick
+// Potential Picks: best book moved in favor 10–19 pts AND EV >= 5%, not already a Pick
 function isPotentialPick(r){
   if(isPick(r)) return false;
-  if(r.ev===null || r.movFavor!==true) return false;
-  if(!oddsOk(r)) return false;
-  const absMov = r.movement!==null ? Math.abs(r.movement) : 0;
-  return r.ev >= 5 && absMov >= 10 && absMov < 20;
+  const s=_pickSignal(r);
+  if(s.ev===null||s.movFavor!==true) return false;
+  const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
+  if(o!==null&&o!==undefined&&o<=-200) return false;
+  const absMov=s.mov!==null?Math.abs(s.mov):0;
+  return s.ev>=5 && absMov>=10 && absMov<20;
 }
 
 function refreshPicks(){
@@ -1424,7 +1455,7 @@ function buildUnitsTable(base){
   // ── Summary table ────────────────────────────────────────────────────────────
   function toDecimal(o){ return o>0 ? 1+o/100 : 1+100/Math.abs(o); }
   function avgOddsAmerican(recs){
-    const withOdds = recs.map(r=>r.lastOdds!==null?r.lastOdds:r.firstOdds).filter(o=>o!==null);
+    const withOdds = recs.map(r=>pickClosingOdds(r)).filter(o=>o!==null&&o!==undefined);
     if(!withOdds.length) return null;
     const avgDec = withOdds.reduce((s,o)=>s+toDecimal(o),0)/withOdds.length;
     return avgDec>=2 ? Math.round((avgDec-1)*100) : Math.round(-100/(avgDec-1));
@@ -1434,7 +1465,7 @@ function buildUnitsTable(base){
     const graded = recs.filter(r=>r.result==='Win'||r.result==='Loss');
     const wins   = graded.filter(r=>r.result==='Win').length;
     const losses = graded.length - wins;
-    const pnl    = graded.reduce((sum,r)=>sum + (calcPnl(r.result, r.lastOdds||r.firstOdds, unitSize)||0), 0);
+    const pnl    = graded.reduce((sum,r)=>sum + (calcPnl(r.result, pickClosingOdds(r), unitSize)||0), 0);
     const avgOdds = avgOddsAmerican(recs);
     return {wins, losses, n:graded.length, pnl, pending: recs.length - graded.length, avgOdds};
   }
@@ -1518,7 +1549,7 @@ function buildUnitsTable(base){
       const dgId=('units_'+t.units+'_'+date).replace(/[^a-zA-Z0-9]/g,'_');
       const graded=recs.filter(r=>r.result==='Win'||r.result==='Loss');
       const wins=graded.filter(r=>r.result==='Win').length;
-      const pnl=graded.reduce((sum,r)=>sum+(calcPnl(r.result,r.lastOdds||r.firstOdds,t.units)||0),0);
+      const pnl=graded.reduce((sum,r)=>sum+(calcPnl(r.result,pickClosingOdds(r),t.units)||0),0);
       const pnlStr=graded.length?`${pnl>=0?'+':''}$${pnl.toFixed(0)}`:'Pending';
       const pnlColor=graded.length?(pnl>0?'var(--accent)':pnl<0?'var(--red)':'var(--text)'):'var(--warn)';
 
@@ -1557,10 +1588,16 @@ function buildUnitsTable(base){
       recs.forEach(r=>{
         const displayName=r.player.replace(/\\s*\\([^)]*\\)/g,'').trim();
         const sideClass=r.side==='Over'?'over':'under';
-        const evColor=r.ev>=25?'var(--accent)':r.ev>=15?'#86efac':'#fbbf24';
-        const movColor=r.movFavor===true?'var(--accent)':'var(--red)';
-        const closeOdds=r.lastOdds!=null?fmtOdds(r.lastOdds):'—';
-        const pnl=calcPnl(r.result,r.lastOdds||r.firstOdds,t.units);
+        const sig=_pickSignal(r);
+        const dispEv=sig.ev;
+        const dispMov=sig.mov;
+        const dispMovFavor=sig.movFavor;
+        const dispLastOdds=sig.lastOdds;
+        const dispFirstOdds=sig.firstOdds;
+        const evColor=dispEv>=25?'var(--accent)':dispEv>=15?'#86efac':'#fbbf24';
+        const movColor=dispMovFavor===true?'var(--accent)':'var(--red)';
+        const closeOdds=dispLastOdds!=null?fmtOdds(dispLastOdds):(dispFirstOdds!=null?fmtOdds(dispFirstOdds):'—');
+        const pnl=calcPnl(r.result,dispLastOdds||dispFirstOdds,t.units);
         const pnlColor=pnl===null?'var(--sub)':pnl>0?'var(--accent)':pnl<0?'var(--red)':'var(--text)';
         const pnlStr=pnl===null?'—':`${pnl>=0?'+':''}$${pnl.toFixed(0)}`;
         const lineStr=r.line!=null?(r.side==='Over'?'o':'u')+r.line:'—';
@@ -1584,9 +1621,9 @@ function buildUnitsTable(base){
           <td style="padding:7px 10px;text-align:center;color:var(--sub);font-size:12px">${fmt12h(r.gameTime||r.time||'')}</td>
           <td style="padding:7px 10px;text-align:center"><span class="side-pill ${sideClass}">${r.side}</span></td>
           <td style="padding:7px 10px;text-align:center">${lineStr}</td>
-          <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${r.ev!=null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—'}</b></td>
+          <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${dispEv!=null?(dispEv>=0?'+':'')+dispEv.toFixed(1)+'%':'—'}</b></td>
           <td style="padding:7px 10px;text-align:center"><b>${closeOdds}</b></td>
-          <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${r.movement!=null?(r.movement>=0?'+':'')+Math.round(r.movement):'—'}</b></td>
+          <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${dispMov!=null?(dispMov>=0?'+':'')+Math.round(dispMov):'—'}</b></td>
           <td style="padding:7px 10px;text-align:center;font-weight:700">${t.units}u</td>
           <td style="padding:7px 10px;text-align:center">${r.actualKs!=null?r.actualKs+' K':'—'}</td>
           <td style="padding:7px 10px;text-align:center">${resBadge}</td>
