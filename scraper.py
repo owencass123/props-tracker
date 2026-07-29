@@ -645,11 +645,31 @@ def append_to_csv(rows):
     _dedup_csv()
 
 
-ROLLING_DAYS = 30  # keep this many days of data to stay under GitHub's 100 MB limit
+ROLLING_DAYS = 30  # full detail kept for this many days; older data is archived
+
+
+def _archive_compress(df_old):
+    """Compress old rows to first+last per player/sportsbook/date/line.
+
+    Groups by line value so that when the line moves during the day
+    (e.g. o6.5 -> o5.5), build_records() still sees the opening and closing
+    odds at the closing line and can compute movement correctly.
+    """
+    import pandas as pd
+    key = ['Player', 'Matchup', 'Sportsbook', 'Date', 'Over Line', 'Under Line']
+    existing_key = [c for c in key if c in df_old.columns]
+    parts = []
+    for _, grp in df_old.groupby(existing_key, sort=False, dropna=False):
+        parts.append(grp.head(1))
+        if len(grp) > 1:
+            parts.append(grp.tail(1))
+    if not parts:
+        return df_old.head(0)
+    return pd.concat(parts, ignore_index=True).drop_duplicates()
 
 
 def _dedup_csv():
-    """Remove exact duplicate rows and trim to rolling window to prevent file bloat."""
+    """Dedup intraday rows; archive-compress data older than ROLLING_DAYS."""
     try:
         import pandas as pd
         from datetime import datetime, timedelta
@@ -664,15 +684,19 @@ def _dedup_csv():
                       'Over EV%','Under EV%']
         existing = [c for c in dedup_cols if c in df.columns]
         df = df.drop_duplicates(subset=existing, keep='last')
-        # Trim rows older than ROLLING_DAYS to keep the file under GitHub's 100 MB limit.
+
         if 'Date' in df.columns:
             cutoff = datetime.utcnow() - timedelta(days=ROLLING_DAYS)
             dates = pd.to_datetime(df['Date'], format='%m/%d/%Y', errors='coerce')
-            df = df[dates >= cutoff]
+            recent = df[dates >= cutoff]
+            old    = df[dates < cutoff]
+            old_compressed = _archive_compress(old) if not old.empty else old
+            df = pd.concat([old_compressed, recent], ignore_index=True).drop_duplicates()
+
         after = len(df)
         if after < before:
             df.to_csv(DATA_FILE, index=False)
-            print(f"🧹 Deduped/trimmed CSV: {before} → {after} rows")
+            print(f"🧹 Deduped/archived CSV: {before} → {after} rows")
     except Exception as e:
         print(f"⚠️  CSV dedup failed (non-fatal): {e}")
 
