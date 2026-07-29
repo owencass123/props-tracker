@@ -661,14 +661,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Picks -->
   <div id="tab-picks" class="tab-panel section">
-    <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor 20+ pts &amp; EV% &ge; 5% · 1 unit = $100 risked</span></h2>
+    <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor &gt;19.5 pts &amp; EV% &ge; 5% · 1 unit = $100 risked</span></h2>
     <div id="units-summary"></div>
     <div id="units-content" style="margin-top:24px"></div>
   </div>
 
   <!-- Potential Picks -->
   <div id="tab-potential" class="tab-panel section">
-    <h2>Potential Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor 10–19 pts &amp; EV% &ge; 5% (not yet in Picks)</span></h2>
+    <h2>Potential Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor 10–19.5 pts &amp; EV% &ge; 5% (not yet in Picks)</span></h2>
     <div id="potential-content" style="margin-top:16px"></div>
   </div>
 
@@ -1310,10 +1310,10 @@ function isPick(r){
   const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
   if(o!==null&&o!==undefined&&o<=-200) return false;
   const absMov=s.mov!==null?Math.abs(s.mov):0;
-  return s.ev>=5 && absMov>=20;
+  return s.ev>=5 && absMov>19.5;
 }
 
-// Potential Picks: best book moved in favor 10–19 pts AND EV >= 5%, not already a Pick
+// Potential Picks: avg of favorable movers 10–19.5 pts AND EV >= 5%, not already a Pick
 function isPotentialPick(r){
   if(isPick(r)) return false;
   const s=_pickSignal(r);
@@ -1321,7 +1321,7 @@ function isPotentialPick(r){
   const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
   if(o!==null&&o!==undefined&&o<=-200) return false;
   const absMov=s.mov!==null?Math.abs(s.mov):0;
-  return s.ev>=5 && absMov>=10 && absMov<20;
+  return s.ev>=5 && absMov>=10 && absMov<=19.5;
 }
 
 function refreshPicks(){
@@ -1432,7 +1432,7 @@ function buildUnitsTable(base){
   const tiers = [
     {
       label: '1 Unit',
-      desc:  'Moved in favor \u226520 pts &amp; EV\u22655%',
+      desc:  'Moved in favor &gt;19.5 pts &amp; EV\u22655%',
       units: 1,
       fn:    r => isPick(r),
     },
