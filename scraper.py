@@ -668,6 +668,19 @@ def _archive_compress(df_old):
     return pd.concat(parts, ignore_index=True).drop_duplicates()
 
 
+def _normalize_odds(series):
+    """Normalize odds column to '+110'/'-120' integer string format."""
+    def fmt(v):
+        if not v or str(v).strip() == '':
+            return v
+        try:
+            n = int(float(str(v).strip().replace('+', '')))
+            return f'+{n}' if n >= 0 else str(n)
+        except (ValueError, TypeError):
+            return v
+    return series.apply(fmt)
+
+
 def _dedup_csv():
     """Dedup intraday rows; archive-compress data older than ROLLING_DAYS."""
     try:
@@ -675,6 +688,17 @@ def _dedup_csv():
         from datetime import datetime, timedelta
         df = pd.read_csv(DATA_FILE, dtype=str, on_bad_lines='warn')
         before = len(df)
+
+        # Normalize odds to canonical integer format (+110/-120) — the scraper
+        # may write floats like "110.0" if Unabated's grid returns numeric values.
+        normalized = False
+        for col in ('Over Odds', 'Under Odds'):
+            if col in df.columns:
+                fixed = _normalize_odds(df[col])
+                if not fixed.equals(df[col]):
+                    df[col] = fixed
+                    normalized = True
+
         # Include EV% in dedup key so that a pre-game row with EV% and a
         # post-game row with blank EV% (same odds/time) are kept as separate
         # entries. Without this, keep='last' would overwrite the EV% row with
@@ -694,9 +718,9 @@ def _dedup_csv():
             df = pd.concat([old_compressed, recent], ignore_index=True).drop_duplicates()
 
         after = len(df)
-        if after < before:
+        if after < before or normalized:
             df.to_csv(DATA_FILE, index=False)
-            print(f"🧹 Deduped/archived CSV: {before} → {after} rows")
+            print(f"🧹 Deduped/archived CSV: {before} → {after} rows" + (" (odds normalized)" if normalized else ""))
     except Exception as e:
         print(f"⚠️  CSV dedup failed (non-fatal): {e}")
 
