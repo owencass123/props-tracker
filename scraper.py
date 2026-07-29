@@ -645,10 +645,14 @@ def append_to_csv(rows):
     _dedup_csv()
 
 
+ROLLING_DAYS = 30  # keep this many days of data to stay under GitHub's 100 MB limit
+
+
 def _dedup_csv():
-    """Remove exact duplicate rows from the CSV to prevent file bloat."""
+    """Remove exact duplicate rows and trim to rolling window to prevent file bloat."""
     try:
         import pandas as pd
+        from datetime import datetime, timedelta
         df = pd.read_csv(DATA_FILE, dtype=str, on_bad_lines='warn')
         before = len(df)
         # Include EV% in dedup key so that a pre-game row with EV% and a
@@ -660,10 +664,15 @@ def _dedup_csv():
                       'Over EV%','Under EV%']
         existing = [c for c in dedup_cols if c in df.columns]
         df = df.drop_duplicates(subset=existing, keep='last')
+        # Trim rows older than ROLLING_DAYS to keep the file under GitHub's 100 MB limit.
+        if 'Date' in df.columns:
+            cutoff = datetime.utcnow() - timedelta(days=ROLLING_DAYS)
+            dates = pd.to_datetime(df['Date'], format='%m/%d/%Y', errors='coerce')
+            df = df[dates >= cutoff]
         after = len(df)
         if after < before:
             df.to_csv(DATA_FILE, index=False)
-            print(f"🧹 Deduped CSV: {before} → {after} rows")
+            print(f"🧹 Deduped/trimmed CSV: {before} → {after} rows")
     except Exception as e:
         print(f"⚠️  CSV dedup failed (non-fatal): {e}")
 
