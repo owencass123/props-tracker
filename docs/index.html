@@ -870,8 +870,6 @@ function pickKey(r){ return r.player+'|'+r.date+'|'+r.side; }
 // Hardcoded picks — always count regardless of movement/EV criteria
 // Add player|MM/DD/YYYY|Over or Under
 const HARDCODED_PICKS = new Set([
-  'Jake Bennett(P)|07/17/2026|Under',
-  'Will Warren(P)|07/12/2026|Under',
 ]);
 function isHardcodedPick(r){ return HARDCODED_PICKS.has(pickKey(r)); }
 
@@ -982,11 +980,16 @@ function buildPotentialTable(base){
     dateRecs.forEach((r,i)=>{
       const displayName=r.player.replace(/\s*\([^)]*\)/g,'').trim();
       const sideClass=r.side==='Over'?'over':'under';
-      const evColor=r.ev>=25?'var(--accent)':r.ev>=15?'#86efac':'#fbbf24';
-      const movColor='var(--accent)';
-      const closeOdds=r.lastOdds!=null?fmtOdds(r.lastOdds):'—';
+      const sig=_pickSignal(r);
+      const dispEv=sig.ev;
+      const dispMov=sig.mov;
+      const dispMovFavor=sig.movFavor;
+      const dispLastOdds=sig.lastOdds;
+      const dispFirstOdds=sig.firstOdds;
+      const evColor=dispEv>=25?'var(--accent)':dispEv>=15?'#86efac':'#fbbf24';
+      const movColor=dispMovFavor===true?'var(--accent)':'var(--red)';
+      const closeOdds=dispLastOdds!=null?fmtOdds(dispLastOdds):(dispFirstOdds!=null?fmtOdds(dispFirstOdds):'—');
       const lineStr=r.line!=null?(r.side==='Over'?'o':'u')+r.line:'—';
-      const recIdx = RAW.indexOf(r);
       let resBadge='<span style="color:var(--warn)">Pending</span>';
       if(r.result==='Win')       resBadge='<span class="win">Win ✓</span>';
       else if(r.result==='Loss') resBadge='<span class="loss">Loss ✗</span>';
@@ -999,9 +1002,9 @@ function buildPotentialTable(base){
         <td style="padding:7px 10px;text-align:center;color:var(--sub);font-size:12px">${fmt12h(r.gameTime||r.time||'')}</td>
         <td style="padding:7px 10px;text-align:center"><span class="side-pill ${sideClass}">${r.side}</span></td>
         <td style="padding:7px 10px;text-align:center">${lineStr}</td>
-        <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${r.ev!=null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—'}</b></td>
+        <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${dispEv!=null?(dispEv>=0?'+':'')+dispEv.toFixed(1)+'%':'—'}</b></td>
         <td style="padding:7px 10px;text-align:center"><b>${closeOdds}</b></td>
-        <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${r.movement!=null?(r.movement>=0?'+':'')+Math.round(r.movement):'—'}</b></td>
+        <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${dispMov!=null?(dispMov>=0?'+':'')+Math.round(dispMov):'—'}</b></td>
         <td style="padding:7px 10px;text-align:center">${r.actualKs!=null?r.actualKs+' K':'—'}</td>
         <td style="padding:7px 10px;text-align:center">${resBadge}</td>
         <td style="padding:7px 10px;text-align:center">${addBtn}</td>
