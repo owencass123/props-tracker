@@ -30,6 +30,8 @@ jobs:
         run: |
           wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
+          sudo rm -f /usr/bin/chromedriver /usr/bin/chromium-chromedriver
+          google-chrome --version
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
