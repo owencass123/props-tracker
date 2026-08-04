@@ -570,6 +570,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="tab" onclick="showTab('player')">By Player</button>
     <button class="tab" onclick="showTab('line')">By Line</button>
     <button class="tab" onclick="showTab('picks')">Picks</button>
+    <button class="tab" onclick="showTab('picks2')">Picks 2</button>
+    <button class="tab" onclick="showTab('picks3')">Picks 3</button>
     <button class="tab" onclick="showTab('potential')">Potential Picks</button>
     <button class="tab" onclick="showTab('raw')">Raw Data</button>
   </div>
@@ -664,6 +666,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor &gt;19.5 pts &amp; EV% &ge; 5% · 1 unit = $100 risked</span></h2>
     <div id="units-summary"></div>
     <div id="units-content" style="margin-top:24px"></div>
+  </div>
+
+  <!-- Picks 2: two-tier (mov≥25 any EV + mov 20-24 EV≥5%) -->
+  <div id="tab-picks2" class="tab-panel section">
+    <h2>Picks 2 <span style="font-size:13px;font-weight:400;color:var(--sub)">— mov&ge;25 any EV, or mov 20&ndash;24 &amp; EV&ge;5% &middot; 1 unit = $100 risked</span></h2>
+    <div id="picks2-summary"></div>
+    <div id="picks2-content" style="margin-top:24px"></div>
+  </div>
+
+  <!-- Picks 3: mov≥25 negative EV only + mov 20-24 EV≥5% -->
+  <div id="tab-picks3" class="tab-panel section">
+    <h2>Picks 3 <span style="font-size:13px;font-weight:400;color:var(--sub)">— mov&ge;25 &amp; EV&lt;0%, or mov 20&ndash;24 &amp; EV&ge;5% &middot; 1 unit = $100 risked</span></h2>
+    <div id="picks3-summary"></div>
+    <div id="picks3-content" style="margin-top:24px"></div>
   </div>
 
   <!-- Potential Picks -->
@@ -1311,6 +1327,32 @@ function isPick(r){
   return s.ev>=5 && absMov>19.5;
 }
 
+// Picks 2: Tier A = mov≥25 any EV; Tier B = mov 20-24 EV≥5%
+function isPick2(r){
+  if(isHardcodedPick(r)) return true;
+  if(isManualPick(r)) return true;
+  const s=_pickSignal(r);
+  if(s.movFavor!==true) return false;
+  const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
+  if(o!==null&&o!==undefined&&o<=-200) return false;
+  const absMov=s.mov!==null?Math.abs(s.mov):0;
+  if(absMov>=25) return s.ev!==null;
+  return s.ev!==null && s.ev>=5 && absMov>=20;
+}
+
+// Picks 3: mov≥25 negative EV only; + mov 20-24 EV≥5%
+function isPick3(r){
+  if(isHardcodedPick(r)) return true;
+  if(isManualPick(r)) return true;
+  const s=_pickSignal(r);
+  if(s.movFavor!==true) return false;
+  const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
+  if(o!==null&&o!==undefined&&o<=-200) return false;
+  const absMov=s.mov!==null?Math.abs(s.mov):0;
+  if(absMov>=25) return s.ev!==null && s.ev<0;
+  return s.ev!==null && s.ev>=5 && absMov>=20;
+}
+
 // Potential Picks: avg of favorable movers 10–19.5 pts AND EV >= 5%, not already a Pick
 function isPotentialPick(r){
   if(isPick(r)) return false;
@@ -1327,6 +1369,8 @@ function refreshPicks(){
   updateCards(filtered);
   const display = getFilteredForDisplay();
   buildUnitsTable(display);
+  buildPicks2Table(display);
+  buildPicks3Table(display);
   buildPotentialTable(display);
 }
 
@@ -1424,16 +1468,23 @@ function calcPnl(result, odds, units){
 }
 
 function buildUnitsTable(base){
-  const UNIT_VAL = 100;
+  _buildPicksTab('units-summary','units-content',[
+    {label:'1 Unit',desc:'Moved in favor &gt;19.5 pts &amp; EV\u22655%',units:1,fn:r=>isPick(r)}
+  ], base, 'p1');
+}
+function buildPicks2Table(base){
+  _buildPicksTab('picks2-summary','picks2-content',[
+    {label:'1 Unit',desc:'mov\u226525 any EV, or mov 20\u201324 &amp; EV\u22655%',units:1,fn:r=>isPick2(r)}
+  ], base, 'p2');
+}
+function buildPicks3Table(base){
+  _buildPicksTab('picks3-summary','picks3-content',[
+    {label:'1 Unit',desc:'mov\u226525 negative EV only, or mov 20\u201324 &amp; EV\u22655%',units:1,fn:r=>isPick3(r)}
+  ], base, 'p3');
+}
 
-  const tiers = [
-    {
-      label: '1 Unit',
-      desc:  'Moved in favor &gt;19.5 pts &amp; EV\u22655%',
-      units: 1,
-      fn:    r => isPick(r),
-    },
-  ];
+function _buildPicksTab(summaryId, contentId, tiers, base, prefix){
+  const UNIT_VAL = 100;
 
   // For each tier, collect qualifying records (de-duped: 2-unit players excluded from 1-unit)
   const used = new Set();
@@ -1517,7 +1568,7 @@ function buildUnitsTable(base){
     <td style="${tdS}"><b style="color:${totColor};font-size:15px">${totalPnl>=0?'+':''}$${totalPnl.toFixed(0)}</b></td>
   </tr>`;
   sumHtml+='</tbody></table></div>';
-  document.getElementById('units-summary').innerHTML=sumHtml;
+  document.getElementById(summaryId).innerHTML=sumHtml;
 
   // ── Per-tier player lists ─────────────────────────────────────────────────────
   let html='';
@@ -1541,7 +1592,7 @@ function buildUnitsTable(base){
       if(!recs||!recs.length) return;
 
       const isToday = date===newestDate;
-      const dgId=('units_'+t.units+'_'+date).replace(/[^a-zA-Z0-9]/g,'_');
+      const dgId=(prefix+'_'+t.units+'_'+date).replace(/[^a-zA-Z0-9]/g,'_');
       const graded=recs.filter(r=>r.result==='Win'||r.result==='Loss');
       const wins=graded.filter(r=>r.result==='Win').length;
       const pnl=graded.reduce((sum,r)=>sum+(calcPnl(r.result,r.lastOdds||r.firstOdds,t.units)||0),0);
@@ -1628,7 +1679,7 @@ function buildUnitsTable(base){
   });
 
   if(!html) html='<p style="color:var(--sub);text-align:center;padding:20px">No qualifying plays found.</p>';
-  document.getElementById('units-content').innerHTML=html;
+  document.getElementById(contentId).innerHTML=html;
 }
 
 function togglePD(uid){
@@ -1785,6 +1836,8 @@ function refresh(){
   const display=getFilteredForDisplay();
   buildPlayerTable(display);
   buildUnitsTable(display);
+  buildPicks2Table(display);
+  buildPicks3Table(display);
   buildPotentialTable(display);
   buildRawTable(display);
 }
