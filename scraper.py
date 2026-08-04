@@ -11,8 +11,10 @@ import csv
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import shutil
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -152,7 +154,10 @@ def setup_driver():
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option("useAutomationExtension", False)
-    driver = webdriver.Chrome(options=opts)
+    # Use chromedriver from PATH (installed by setup-chromedriver action) if available
+    cd = shutil.which("chromedriver")
+    service = Service(cd) if cd else Service()
+    driver = webdriver.Chrome(service=service, options=opts)
     driver.execute_script(
         "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
     )
