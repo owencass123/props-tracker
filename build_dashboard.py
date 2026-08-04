@@ -1382,15 +1382,9 @@ function buildPotentialTable(base){
     dateRecs.forEach((r,i)=>{
       const displayName=r.player.replace(/\\s*\\([^)]*\\)/g,'').trim();
       const sideClass=r.side==='Over'?'over':'under';
-      const sig=_pickSignal(r);
-      const dispEv=sig.ev;
-      const dispMov=sig.mov;
-      const dispMovFavor=sig.movFavor;
-      const dispLastOdds=sig.lastOdds;
-      const dispFirstOdds=sig.firstOdds;
-      const evColor=dispEv>=25?'var(--accent)':dispEv>=15?'#86efac':'#fbbf24';
-      const movColor=dispMovFavor===true?'var(--accent)':'var(--red)';
-      const closeOdds=dispLastOdds!=null?fmtOdds(dispLastOdds):(dispFirstOdds!=null?fmtOdds(dispFirstOdds):'—');
+      const evColor=r.ev>=25?'var(--accent)':r.ev>=15?'#86efac':'#fbbf24';
+      const movColor=r.movFavor===true?'var(--accent)':'var(--red)';
+      const closeOdds=r.lastOdds!=null?fmtOdds(r.lastOdds):'—';
       const lineStr=r.line!=null?(r.side==='Over'?'o':'u')+r.line:'—';
       let resBadge='<span style="color:var(--warn)">Pending</span>';
       if(r.result==='Win')       resBadge='<span class="win">Win ✓</span>';
@@ -1404,9 +1398,9 @@ function buildPotentialTable(base){
         <td style="padding:7px 10px;text-align:center;color:var(--sub);font-size:12px">${fmt12h(r.gameTime||r.time||'')}</td>
         <td style="padding:7px 10px;text-align:center"><span class="side-pill ${sideClass}">${r.side}</span></td>
         <td style="padding:7px 10px;text-align:center">${lineStr}</td>
-        <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${dispEv!=null?(dispEv>=0?'+':'')+dispEv.toFixed(1)+'%':'—'}</b></td>
+        <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${r.ev!=null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—'}</b></td>
         <td style="padding:7px 10px;text-align:center"><b>${closeOdds}</b></td>
-        <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${dispMov!=null?(dispMov>=0?'+':'')+Math.round(dispMov):'—'}</b></td>
+        <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${r.movement!=null?(r.movement>=0?'+':'')+Math.round(r.movement):'—'}</b></td>
         <td style="padding:7px 10px;text-align:center">${r.actualKs!=null?r.actualKs+' K':'—'}</td>
         <td style="padding:7px 10px;text-align:center">${resBadge}</td>
         <td style="padding:7px 10px;text-align:center">${addBtn}</td>
@@ -1456,7 +1450,7 @@ function buildUnitsTable(base){
   // ── Summary table ────────────────────────────────────────────────────────────
   function toDecimal(o){ return o>0 ? 1+o/100 : 1+100/Math.abs(o); }
   function avgOddsAmerican(recs){
-    const withOdds = recs.map(r=>pickClosingOdds(r)).filter(o=>o!==null&&o!==undefined);
+    const withOdds = recs.map(r=>r.lastOdds!==null?r.lastOdds:r.firstOdds).filter(o=>o!==null&&o!==undefined);
     if(!withOdds.length) return null;
     const avgDec = withOdds.reduce((s,o)=>s+toDecimal(o),0)/withOdds.length;
     return avgDec>=2 ? Math.round((avgDec-1)*100) : Math.round(-100/(avgDec-1));
@@ -1466,7 +1460,7 @@ function buildUnitsTable(base){
     const graded = recs.filter(r=>r.result==='Win'||r.result==='Loss');
     const wins   = graded.filter(r=>r.result==='Win').length;
     const losses = graded.length - wins;
-    const pnl    = graded.reduce((sum,r)=>sum + (calcPnl(r.result, pickClosingOdds(r), unitSize)||0), 0);
+    const pnl    = graded.reduce((sum,r)=>sum + (calcPnl(r.result, r.lastOdds||r.firstOdds, unitSize)||0), 0);
     const avgOdds = avgOddsAmerican(recs);
     return {wins, losses, n:graded.length, pnl, pending: recs.length - graded.length, avgOdds};
   }
@@ -1550,7 +1544,7 @@ function buildUnitsTable(base){
       const dgId=('units_'+t.units+'_'+date).replace(/[^a-zA-Z0-9]/g,'_');
       const graded=recs.filter(r=>r.result==='Win'||r.result==='Loss');
       const wins=graded.filter(r=>r.result==='Win').length;
-      const pnl=graded.reduce((sum,r)=>sum+(calcPnl(r.result,pickClosingOdds(r),t.units)||0),0);
+      const pnl=graded.reduce((sum,r)=>sum+(calcPnl(r.result,r.lastOdds||r.firstOdds,t.units)||0),0);
       const pnlStr=graded.length?`${pnl>=0?'+':''}$${pnl.toFixed(0)}`:'Pending';
       const pnlColor=graded.length?(pnl>0?'var(--accent)':pnl<0?'var(--red)':'var(--text)'):'var(--warn)';
 
@@ -1589,16 +1583,10 @@ function buildUnitsTable(base){
       recs.forEach(r=>{
         const displayName=r.player.replace(/\\s*\\([^)]*\\)/g,'').trim();
         const sideClass=r.side==='Over'?'over':'under';
-        const sig=_pickSignal(r);
-        const dispEv=sig.ev;
-        const dispMov=sig.mov;
-        const dispMovFavor=sig.movFavor;
-        const dispLastOdds=sig.lastOdds;
-        const dispFirstOdds=sig.firstOdds;
-        const evColor=dispEv>=25?'var(--accent)':dispEv>=15?'#86efac':'#fbbf24';
-        const movColor=dispMovFavor===true?'var(--accent)':'var(--red)';
-        const closeOdds=dispLastOdds!=null?fmtOdds(dispLastOdds):(dispFirstOdds!=null?fmtOdds(dispFirstOdds):'—');
-        const pnl=calcPnl(r.result,dispLastOdds||dispFirstOdds,t.units);
+        const evColor=r.ev>=25?'var(--accent)':r.ev>=15?'#86efac':'#fbbf24';
+        const movColor=r.movFavor===true?'var(--accent)':'var(--red)';
+        const closeOdds=r.lastOdds!=null?fmtOdds(r.lastOdds):'—';
+        const pnl=calcPnl(r.result,r.lastOdds||r.firstOdds,t.units);
         const pnlColor=pnl===null?'var(--sub)':pnl>0?'var(--accent)':pnl<0?'var(--red)':'var(--text)';
         const pnlStr=pnl===null?'—':`${pnl>=0?'+':''}$${pnl.toFixed(0)}`;
         const lineStr=r.line!=null?(r.side==='Over'?'o':'u')+r.line:'—';
@@ -1622,9 +1610,9 @@ function buildUnitsTable(base){
           <td style="padding:7px 10px;text-align:center;color:var(--sub);font-size:12px">${fmt12h(r.gameTime||r.time||'')}</td>
           <td style="padding:7px 10px;text-align:center"><span class="side-pill ${sideClass}">${r.side}</span></td>
           <td style="padding:7px 10px;text-align:center">${lineStr}</td>
-          <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${dispEv!=null?(dispEv>=0?'+':'')+dispEv.toFixed(1)+'%':'—'}</b></td>
+          <td style="padding:7px 10px;text-align:center"><b style="color:${evColor}">${r.ev!=null?(r.ev>=0?'+':'')+r.ev.toFixed(1)+'%':'—'}</b></td>
           <td style="padding:7px 10px;text-align:center"><b>${closeOdds}</b></td>
-          <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${dispMov!=null?(dispMov>=0?'+':'')+Math.round(dispMov):'—'}</b></td>
+          <td style="padding:7px 10px;text-align:center"><b style="color:${movColor}">${r.movement!=null?(r.movement>=0?'+':'')+Math.round(r.movement):'—'}</b></td>
           <td style="padding:7px 10px;text-align:center;font-weight:700">${t.units}u</td>
           <td style="padding:7px 10px;text-align:center">${r.actualKs!=null?r.actualKs+' K':'—'}</td>
           <td style="padding:7px 10px;text-align:center">${resBadge}</td>
