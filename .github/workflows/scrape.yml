@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repo
@@ -26,13 +26,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
-
-      - name: Setup ChromeDriver
-        uses: browser-actions/setup-chromedriver@v1
+      - name: Install Chrome
+        run: |
+          wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
+          sudo rm -f /usr/bin/chromedriver /usr/bin/chromium-chromedriver
+          google-chrome --version
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
