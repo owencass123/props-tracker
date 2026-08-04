@@ -26,12 +26,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Chrome
+      - name: Install Chrome and matching ChromeDriver
         run: |
           wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
-          sudo rm -f /usr/bin/chromedriver /usr/bin/chromium-chromedriver
-          google-chrome --version
+          CHROME_VER=$(google-chrome --version | grep -oP '[\d.]+')
+          echo "Chrome version: $CHROME_VER"
+          wget -q "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VER}/linux64/chromedriver-linux64.zip" -O chromedriver.zip
+          unzip -q chromedriver.zip
+          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
+          sudo chmod +x /usr/local/bin/chromedriver
+          chromedriver --version
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
