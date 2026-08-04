@@ -38,6 +38,14 @@ jobs:
           sudo chmod +x /usr/local/bin/chromedriver
           chromedriver --version
 
+      - name: Test Chrome can launch
+        run: |
+          echo "Chrome binary: $(which google-chrome)"
+          echo "ChromeDriver binary: $(which chromedriver)"
+          timeout 10 google-chrome --headless --no-sandbox --disable-dev-shm-usage \
+            --dump-dom about:blank 2>&1 | head -5 \
+            && echo "✅ Chrome launched OK" || echo "❌ Chrome failed standalone"
+
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 

@@ -143,18 +143,19 @@ def detect_col_ids(driver):
 
 def setup_driver():
     opts = Options()
+    # Explicitly point at the Chrome binary so ChromeDriver doesn't pick up a stale one
+    chrome_bin = (shutil.which("google-chrome")
+                  or shutil.which("google-chrome-stable")
+                  or "/usr/bin/google-chrome")
+    opts.binary_location = chrome_bin
     opts.add_argument("--headless")
     opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-setuid-sandbox")
-    opts.add_argument("--no-zygote")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
-    opts.add_argument("--disable-software-rasterizer")
     opts.add_argument("--window-size=1920,1080")
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option("useAutomationExtension", False)
-    # Use chromedriver from PATH (installed by setup-chromedriver action) if available
     cd = shutil.which("chromedriver")
     service = Service(cd) if cd else Service()
     driver = webdriver.Chrome(service=service, options=opts)
