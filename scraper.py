@@ -13,7 +13,6 @@ from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -21,7 +20,6 @@ from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import (
     NoSuchElementException, StaleElementReferenceException, TimeoutException
 )
-from webdriver_manager.chrome import ChromeDriverManager
 
 # ── credentials (from GitHub Secrets / env vars) ──────────────────────────────
 USERNAME = os.environ.get("UNABATED_USERNAME", "")
@@ -151,8 +149,7 @@ def setup_driver():
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option("useAutomationExtension", False)
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=opts)
+    driver = webdriver.Chrome(options=opts)
     driver.execute_script(
         "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
     )
