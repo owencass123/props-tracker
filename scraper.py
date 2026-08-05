@@ -68,7 +68,7 @@ TODAY = datetime.now(_CT).strftime("%m/%d/%Y")
 
 _PW = None
 _SCRAPE_DEADLINE = None
-SCRAPE_LIMIT_MINS = 20  # bail out and save partial results after this many minutes
+SCRAPE_LIMIT_MINS = 50  # bail out and save partial results after this many minutes
 
 
 # ── column ID auto-detection ──────────────────────────────────────────────────
@@ -372,7 +372,7 @@ def find_center_cell(page, row_id, col_id):
     )
 
 
-def wait_for_cell(page, row_id, col_id, timeout=0.8):
+def wait_for_cell(page, row_id, col_id, timeout=0.3):
     sel = f".ag-center-cols-container [row-id='{row_id}'] [col-id='{col_id}']"
     try:
         page.wait_for_selector(sel, timeout=timeout * 1000)
@@ -395,7 +395,7 @@ def ensure_cell_visible(page, row_id, col_id):
         cell = wait_for_cell(page, row_id, col_id)
         if cell:
             return cell
-    for _ in range(18):
+    for _ in range(12):
         grid_scroll_by(page, 200)
         cell = wait_for_cell(page, row_id, col_id)
         if cell:
@@ -543,7 +543,7 @@ def process_cell(page, cell, player, matchup, book, rows_out):
         print(f"  ⚠️  {book}: could not open panel")
         return
 
-    panel, _ = wait_for_panel_rows(page, timeout=4.0)
+    panel, _ = wait_for_panel_rows(page, timeout=2.0)
     if not panel:
         print(f"  ⚠️  {book}: panel not found")
         return
