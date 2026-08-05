@@ -14,6 +14,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-22.04
+    timeout-minutes: 28
 
     steps:
       - name: Checkout repo

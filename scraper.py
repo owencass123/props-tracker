@@ -67,6 +67,8 @@ _CT = timezone(timedelta(hours=-5))
 TODAY = datetime.now(_CT).strftime("%m/%d/%Y")
 
 _PW = None
+_SCRAPE_DEADLINE = None
+SCRAPE_LIMIT_MINS = 20  # bail out and save partial results after this many minutes
 
 
 # ── column ID auto-detection ──────────────────────────────────────────────────
@@ -614,9 +616,17 @@ def scroll_and_process_all_rows(page, rows_out):
     print(f"ℹ️  Skipping {len(finalized)} already-finalized player+date combos")
 
     for attempt in range(60):
+        if _SCRAPE_DEADLINE and time.time() > _SCRAPE_DEADLINE:
+            print(f"⏱️  Scrape time limit reached — saving {len(rows_out)} rows collected so far")
+            break
+
         rows = page.query_selector_all(".ag-center-cols-container .ag-row")
         new_found = False
         for row in rows:
+            if _SCRAPE_DEADLINE and time.time() > _SCRAPE_DEADLINE:
+                print(f"⏱️  Scrape time limit reached mid-page — saving partial results")
+                return
+
             row_id = row.get_attribute("row-id")
             if not row_id or row_id in seen:
                 continue
@@ -767,6 +777,9 @@ def _dismiss_modals(page):
 
 
 def main():
+    global _SCRAPE_DEADLINE
+    _SCRAPE_DEADLINE = time.time() + SCRAPE_LIMIT_MINS * 60
+    print(f"⏱️  Scrape deadline: {SCRAPE_LIMIT_MINS} minutes from now")
     rows_out = []
     browser, page = setup_browser()
     try:
