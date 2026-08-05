@@ -239,7 +239,9 @@ def login(page):
 
 def click_simulate(page):
     try:
-        btn = page.locator("xpath=//a[contains(@title,'Simulate') or contains(@class,'btn-success')]")
+        # Target the main Simulate button specifically — it has a title attribute.
+        # Row-level btn-success buttons don't, so this avoids the strict-mode error.
+        btn = page.locator("a[title*='Simulate'][class*='btn-success']")
         btn.wait_for(state="visible", timeout=15000)
         btn.evaluate("(el) => el.click()")
         time.sleep(2)
