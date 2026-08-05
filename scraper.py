@@ -772,61 +772,25 @@ def main():
     try:
         login(page)
 
-        # Try known props URL patterns in order
-        props_urls = [
-            "https://unabated.com/sports/mlb/props",
-            "https://unabated.com/sports/mlb/prop-odds",
-            "https://unabated.com/mlb/props",
-            "https://unabated.com/mlb/prop-odds",
-        ]
-        grid_found = False
-        for props_url in props_urls:
-            page.goto(props_url)
-            page.wait_for_load_state("networkidle", timeout=20000)
-            time.sleep(2)
-            _dismiss_modals(page)
-            print(f"  Trying {props_url} → landed at {page.url}")
-            try:
-                page.wait_for_selector(".ag-center-cols-container", timeout=15000)
-                grid_found = True
-                print(f"✅ Grid found at {page.url}")
-                break
-            except PWTimeout:
-                continue
+        page.goto("https://tools.unabated.com/mlb/props")
+        page.wait_for_load_state("networkidle", timeout=30000)
+        time.sleep(3)
+        _dismiss_modals(page)
 
-        if not grid_found:
-            # Fall back: go to MLB hub and click the Prop Odds link
-            page.goto("https://unabated.com/sports/mlb")
-            page.wait_for_load_state("networkidle", timeout=20000)
-            time.sleep(2)
-            for sel in [
-                "xpath=//a[contains(normalize-space(.), 'Prop Odds') or contains(normalize-space(.), 'Props')]",
-                "text=Prop Odds",
-                "text=Props",
-                "[href*='prop']",
-            ]:
-                try:
-                    el = page.wait_for_selector(sel, timeout=3000, state="visible")
-                    if el:
-                        href = el.get_attribute("href") or ""
-                        print(f"  Clicking prop link: {href}")
-                        el.click()
-                        page.wait_for_load_state("networkidle", timeout=20000)
-                        time.sleep(2)
-                        _dismiss_modals(page)
-                        page.wait_for_selector(".ag-center-cols-container", timeout=20000)
-                        grid_found = True
-                        print(f"✅ Grid found via nav at {page.url}")
-                        break
-                except (PWTimeout, Exception):
-                    continue
-
-        if not grid_found:
+        try:
+            page.wait_for_selector(".ag-center-cols-container", timeout=60000)
+        except PWTimeout:
             page.screenshot(path="/tmp/props_page.png", full_page=True)
             print(f"  Current URL: {page.url}")
-            links = page.evaluate("() => Array.from(document.querySelectorAll('a[href]')).map(a => a.href).filter(h => h.includes('prop') || h.includes('mlb')).slice(0, 20)")
-            print(f"  MLB/prop links on page: {links}")
-            raise RuntimeError("Could not find props grid — screenshot at /tmp/props_page.png")
+            leaf_text = page.evaluate("""() =>
+                Array.from(document.querySelectorAll('*'))
+                    .filter(el => el.children.length === 0 && el.textContent.trim())
+                    .map(el => el.textContent.trim())
+                    .filter(t => t.length < 60)
+                    .slice(0, 40)
+            """)
+            print(f"  Page text: {leaf_text}")
+            raise
 
         time.sleep(3)
         click_simulate(page)
