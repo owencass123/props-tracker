@@ -154,8 +154,6 @@ def setup_driver():
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=1920,1080")
     opts.add_argument("--disable-blink-features=AutomationControlled")
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
     cd = shutil.which("chromedriver")
     service = Service(cd) if cd else Service()
     driver = webdriver.Chrome(service=service, options=opts)
