@@ -36,7 +36,7 @@ jobs:
         env:
           UNABATED_USERNAME: ${{ secrets.UNABATED_USERNAME }}
           UNABATED_PASSWORD: ${{ secrets.UNABATED_PASSWORD }}
-        run: python scraper.py
+        run: python -u scraper.py
 
       - name: Upload debug screenshots
         if: failure()
