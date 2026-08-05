@@ -133,49 +133,100 @@ def setup_browser():
 
 # ── login ─────────────────────────────────────────────────────────────────────
 
-def login(page):
-    page.goto("https://unabated.com")
-    page.wait_for_load_state("domcontentloaded")
-    time.sleep(2)
+_USERNAME_SELECTORS = [
+    "#username",
+    "input[name='username']",
+    "input[type='email']",
+    "input[name='email']",
+    "input[placeholder*='email' i]",
+    "input[placeholder*='username' i]",
+]
 
-    # Try multiple login button patterns in order
-    login_selectors = [
-        "xpath=//button[normalize-space()='LOGIN']",
-        "xpath=//button[normalize-space()='Log In']",
-        "xpath=//button[normalize-space()='Log in']",
-        "xpath=//a[normalize-space()='LOGIN']",
-        "xpath=//a[normalize-space()='Log In']",
-        "xpath=//button[contains(translate(normalize-space(.), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'LOG')]",
-        "[data-testid*='login']",
-        "[class*='login']",
-        "text=LOGIN",
-        "text=Log In",
-        "text=Log in",
+_PASSWORD_SELECTORS = [
+    "#password",
+    "input[name='password']",
+    "input[type='password']",
+]
+
+
+def _find_input(page, selectors, timeout=5000):
+    for sel in selectors:
+        try:
+            el = page.wait_for_selector(sel, timeout=timeout, state="visible")
+            if el:
+                return el, sel
+        except PWTimeout:
+            continue
+    return None, None
+
+
+def login(page):
+    # Try direct login URL first — skips the need to find a login button
+    direct_urls = [
+        "https://unabated.com/login",
+        "https://app.unabated.com/login",
+        "https://unabated.com/sign-in",
     ]
 
-    clicked = False
-    for sel in login_selectors:
-        try:
-            el = page.wait_for_selector(sel, timeout=3000, state="visible")
-            if el:
-                el.click()
-                clicked = True
-                print(f"✅ Clicked login via: {sel}")
-                break
-        except Exception:
-            continue
+    username_el = None
+    for url in direct_urls:
+        page.goto(url)
+        page.wait_for_load_state("domcontentloaded")
+        time.sleep(1)
+        username_el, found_sel = _find_input(page, _USERNAME_SELECTORS, timeout=4000)
+        if username_el:
+            print(f"✅ Login form found at {url} (field: {found_sel})")
+            break
 
-    if not clicked:
-        page.screenshot(path="/tmp/login_page.png", full_page=True)
-        # Print visible button/link text for debugging
-        btns = page.query_selector_all("button, a")
-        texts = [b.inner_text().strip() for b in btns if b.inner_text().strip()][:20]
-        print(f"⚠️  Login button not found. Visible buttons/links: {texts}")
-        raise RuntimeError("Could not find login button — screenshot saved to /tmp/login_page.png")
+    if not username_el:
+        # Fall back: homepage + find login button via JS text scan
+        page.goto("https://unabated.com")
+        page.wait_for_load_state("networkidle")
+        time.sleep(3)
 
-    page.wait_for_selector("#username", timeout=10000)
-    page.fill("#username", USERNAME)
-    page.fill("#password", PASSWORD)
+        # Find ANY visible element whose own text node is a login phrase
+        handle = page.evaluate_handle("""() => {
+            const phrases = ['login', 'log in', 'sign in'];
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+            while (walker.nextNode()) {
+                const el = walker.currentNode;
+                const st = getComputedStyle(el);
+                if (st.display === 'none' || st.visibility === 'hidden') continue;
+                const own = Array.from(el.childNodes)
+                    .filter(n => n.nodeType === 3)
+                    .map(n => n.textContent.trim().toLowerCase())
+                    .join(' ').trim();
+                if (phrases.some(p => own === p)) return el;
+            }
+            return null;
+        }""")
+
+        el = handle.as_element()
+        if el:
+            el.click()
+            print("✅ Login button found via JS text scan")
+            username_el, _ = _find_input(page, _USERNAME_SELECTORS)
+        else:
+            page.screenshot(path="/tmp/login_page.png", full_page=True)
+            all_text = page.evaluate("""() =>
+                Array.from(document.querySelectorAll('*'))
+                    .filter(el => el.children.length === 0 && el.textContent.trim())
+                    .map(el => el.textContent.trim())
+                    .filter(t => t.length < 40)
+                    .slice(0, 30)
+            """)
+            print(f"⚠️  Login not found. Leaf text on page: {all_text}")
+            raise RuntimeError("Could not find login — screenshot at /tmp/login_page.png")
+
+    if not username_el:
+        raise RuntimeError("Found login button but no username field appeared")
+
+    password_el, _ = _find_input(page, _PASSWORD_SELECTORS)
+    if not password_el:
+        raise RuntimeError("Username field found but no password field")
+
+    username_el.fill(USERNAME)
+    password_el.fill(PASSWORD)
     page.keyboard.press("Enter")
     page.wait_for_load_state("networkidle", timeout=20000)
     time.sleep(3)
