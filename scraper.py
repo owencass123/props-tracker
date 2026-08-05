@@ -746,13 +746,51 @@ def _dedup_csv():
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+def _dismiss_modals(page):
+    for sel in [
+        "[class*='modal'] button[class*='close']",
+        "[class*='modal'] button[aria-label*='close' i]",
+        "[class*='dialog'] button[class*='close']",
+        "[role='dialog'] button[class*='close']",
+        "button[aria-label='Close']",
+        "button.close",
+        "[data-dismiss='modal']",
+    ]:
+        try:
+            el = page.query_selector(sel)
+            if el and el.is_visible():
+                el.click()
+                time.sleep(0.5)
+                print(f"  ✅ Dismissed modal via {sel}")
+        except Exception:
+            pass
+
+
 def main():
     rows_out = []
     browser, page = setup_browser()
     try:
         login(page)
         page.goto("https://unabated.com/mlb/props")
-        page.wait_for_selector(".ag-center-cols-container", timeout=30000)
+        page.wait_for_load_state("networkidle", timeout=30000)
+        time.sleep(3)
+        _dismiss_modals(page)
+
+        try:
+            page.wait_for_selector(".ag-center-cols-container", timeout=60000)
+        except PWTimeout:
+            page.screenshot(path="/tmp/props_page.png", full_page=True)
+            print(f"  Current URL: {page.url}")
+            leaf_text = page.evaluate("""() =>
+                Array.from(document.querySelectorAll('*'))
+                    .filter(el => el.children.length === 0 && el.textContent.trim())
+                    .map(el => el.textContent.trim())
+                    .filter(t => t.length < 60)
+                    .slice(0, 40)
+            """)
+            print(f"  Page text: {leaf_text}")
+            raise
+
         time.sleep(3)
         click_simulate(page)
         page.wait_for_selector(".ag-center-cols-container .ag-row", timeout=20000)
