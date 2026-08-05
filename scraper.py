@@ -11,17 +11,7 @@ import csv
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-import shutil
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import (
-    NoSuchElementException, StaleElementReferenceException, TimeoutException
-)
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 # ── credentials (from GitHub Secrets / env vars) ──────────────────────────────
 USERNAME = os.environ.get("UNABATED_USERNAME", "")
@@ -31,7 +21,6 @@ if not USERNAME or not PASSWORD:
     raise RuntimeError("Set UNABATED_USERNAME and UNABATED_PASSWORD environment variables.")
 
 # ── sportsbook column IDs in the AG Grid ──────────────────────────────────────
-# Fallback hardcoded IDs — used only if auto-detection fails.
 SPORTSBOOK_COL_IDS_DEFAULT = {
     "FanDuel":    "2",
     "DraftKings": "1",
@@ -46,10 +35,8 @@ SPORTSBOOK_COL_IDS_DEFAULT = {
     "Hard Rock":  "24",
 }
 
-# Will be populated at runtime by detect_col_ids()
 SPORTSBOOK_COL_IDS = {}
 
-# Canonical names to match against header text (lowercase, partial match ok)
 BOOK_NAME_ALIASES = {
     "fanduel":    "FanDuel",
     "draftkings": "DraftKings",
@@ -76,44 +63,33 @@ CSV_COLUMNS = [
     "Time", "Date", "Scrape Date",
 ]
 
-# Use Central Time for game-date logic so the date is correct even when
-# GitHub Actions runs after midnight UTC (late CT games cross midnight UTC).
-_CT = timezone(timedelta(hours=-5))   # CDT = UTC-5 (Apr–Nov)
+_CT = timezone(timedelta(hours=-5))
 TODAY = datetime.now(_CT).strftime("%m/%d/%Y")
+
+_PW = None
 
 
 # ── column ID auto-detection ──────────────────────────────────────────────────
 
-def detect_col_ids(driver):
-    """
-    Read the AG Grid header cells to map sportsbook names → col-id attributes.
-    Populates SPORTSBOOK_COL_IDS; falls back to hardcoded defaults for any book
-    that can't be found in the header.
-    """
+def detect_col_ids(page):
     global SPORTSBOOK_COL_IDS
     detected = {}
     try:
-        # Scroll through the entire header width to reveal all columns
-        grid_scroll_to(driver, 0)
+        grid_scroll_to(page, 0)
         time.sleep(0.3)
-        max_scroll = get_grid_scroll_width(driver)
+        max_scroll = get_grid_scroll_width(page)
         step = 300
         x = 0
         while x <= max_scroll + step:
-            headers = driver.find_elements(
-                By.CSS_SELECTOR,
-                ".ag-header-container .ag-header-cell[col-id]"
-            )
+            headers = page.query_selector_all(".ag-header-container .ag-header-cell[col-id]")
             for h in headers:
                 col_id = h.get_attribute("col-id")
                 if not col_id:
                     continue
                 try:
-                    label = h.find_element(
-                        By.CSS_SELECTOR, ".ag-header-cell-text"
-                    ).text.strip().lower()
+                    label = h.query_selector(".ag-header-cell-text").inner_text().strip().lower()
                 except Exception:
-                    label = h.text.strip().lower()
+                    label = h.inner_text().strip().lower()
                 if not label:
                     continue
                 print(f"  🔎 Header col-id={col_id!r} label={label!r}")
@@ -123,13 +99,12 @@ def detect_col_ids(driver):
                         print(f"  📌 Detected col-id for {canonical}: {col_id} (header: '{label}')")
                         break
             x += step
-            grid_scroll_to(driver, x)
+            grid_scroll_to(page, x)
             time.sleep(0.1)
-        grid_scroll_to(driver, 0)
+        grid_scroll_to(page, 0)
     except Exception as e:
         print(f"  ⚠️  detect_col_ids failed: {e}")
 
-    # Fill in any missing books from hardcoded defaults
     for book, default_id in SPORTSBOOK_COL_IDS_DEFAULT.items():
         if book not in detected:
             print(f"  ⚠️  {book}: not detected in header, using default col-id {default_id}")
@@ -139,61 +114,45 @@ def detect_col_ids(driver):
     print(f"✅ Column IDs resolved: {SPORTSBOOK_COL_IDS}")
 
 
-# ── driver setup ──────────────────────────────────────────────────────────────
+# ── browser setup ─────────────────────────────────────────────────────────────
 
-_CD_LOG = "/tmp/chromedriver.log"
-
-def setup_driver():
-    opts = Options()
-    opts.add_argument("--headless=new")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("--disable-gpu")
-    opts.add_argument("--window-size=1920,1080")
-    cd = shutil.which("chromedriver")
-    print(f"  ChromeDriver: {cd}")
-    service = Service(cd, log_output=_CD_LOG) if cd else Service(log_output=_CD_LOG)
-    try:
-        driver = webdriver.Chrome(service=service, options=opts)
-    except Exception:
-        try:
-            with open(_CD_LOG) as f:
-                print("=== ChromeDriver log ===")
-                print(f.read()[-4000:])
-        except Exception as le:
-            print(f"  (could not read chromedriver log: {le})")
-        raise
-    return driver
+def setup_browser():
+    global _PW
+    _PW = sync_playwright().start()
+    browser = _PW.chromium.launch(
+        headless=True,
+        args=[
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+        ],
+    )
+    page = browser.new_page(viewport={"width": 1920, "height": 1080})
+    return browser, page
 
 
 # ── login ─────────────────────────────────────────────────────────────────────
 
-def login(driver):
-    driver.get("https://unabated.com")
-    WebDriverWait(driver, 15).until(
-        EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='LOGIN']"))
-    ).click()
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.ID, "username"))
-    ).send_keys(USERNAME)
-    driver.find_element(By.ID, "password").send_keys(PASSWORD + Keys.RETURN)
-    WebDriverWait(driver, 20).until(EC.url_contains("unabated.com"))
+def login(page):
+    page.goto("https://unabated.com")
+    page.locator("xpath=//button[normalize-space()='LOGIN']").click(timeout=15000)
+    page.wait_for_selector("#username", timeout=10000)
+    page.fill("#username", USERNAME)
+    page.fill("#password", PASSWORD)
+    page.keyboard.press("Enter")
+    page.wait_for_load_state("networkidle", timeout=20000)
     time.sleep(3)
     print("✅ Logged in")
 
 
 # ── simulate button ───────────────────────────────────────────────────────────
 
-def click_simulate(driver):
-    """Auto-click the Simulate button and select the first projection set."""
+def click_simulate(page):
     try:
-        btn = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((
-            By.XPATH,
-            "//a[contains(@title,'Simulate') or contains(@class,'btn-success')]"
-        )))
-        driver.execute_script("arguments[0].click();", btn)
+        btn = page.locator("xpath=//a[contains(@title,'Simulate') or contains(@class,'btn-success')]")
+        btn.wait_for(state="visible", timeout=15000)
+        btn.evaluate("(el) => el.click()")
         time.sleep(2)
-        # If a dropdown/modal appeared, click the first option
         for selector in [
             ".dropdown-menu a",
             ".dropdown-item",
@@ -202,13 +161,11 @@ def click_simulate(driver):
             ".projection-set-option",
         ]:
             try:
-                opt = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                )
-                driver.execute_script("arguments[0].click();", opt)
+                opt = page.wait_for_selector(selector, state="visible", timeout=2000)
+                opt.evaluate("(el) => el.click()")
                 print(f"✅ Selected projection set via {selector}")
                 break
-            except TimeoutException:
+            except PWTimeout:
                 continue
         time.sleep(4)
         print("✅ Simulate clicked")
@@ -259,119 +216,112 @@ def normalize_date(s):
 
 # ── grid scroll helpers ───────────────────────────────────────────────────────
 
-def grid_scroll_to(driver, x):
-    driver.execute_script("""
+def grid_scroll_to(page, x):
+    page.evaluate("""(x) => {
         const c = document.querySelector('.ag-center-cols-viewport');
         const h = document.querySelector('.ag-header-viewport');
-        if (c) c.scrollLeft = Math.max(0, arguments[0]);
-        if (h) h.scrollLeft = Math.max(0, arguments[0]);
-    """, int(x))
+        if (c) c.scrollLeft = Math.max(0, x);
+        if (h) h.scrollLeft = Math.max(0, x);
+    }""", int(x))
 
 
-def grid_scroll_by(driver, dx):
-    driver.execute_script("""
+def grid_scroll_by(page, dx):
+    page.evaluate("""(dx) => {
         const c = document.querySelector('.ag-center-cols-viewport');
         const h = document.querySelector('.ag-header-viewport');
-        if (c) { c.scrollLeft += arguments[0]; if (h) h.scrollLeft = c.scrollLeft; }
-    """, int(dx))
+        if (c) { c.scrollLeft += dx; if (h) h.scrollLeft = c.scrollLeft; }
+    }""", int(dx))
 
 
-def grid_scroll_left_edge(driver):
-    grid_scroll_to(driver, 0)
+def grid_scroll_left_edge(page):
+    grid_scroll_to(page, 0)
 
 
-def get_grid_scroll_width(driver):
-    return driver.execute_script("""
+def get_grid_scroll_width(page):
+    return page.evaluate("""() => {
         const c = document.querySelector('.ag-center-cols-viewport');
         return c ? c.scrollWidth : 0;
-    """)
+    }""")
 
 
-def jump_to_header(driver, col_id, margin=120):
+def jump_to_header(page, col_id, margin=120):
     try:
-        hdr = driver.find_element(By.CSS_SELECTOR, f".ag-header-container [col-id='{col_id}']")
-        driver.execute_script("""
+        hdr = page.query_selector(f".ag-header-container [col-id='{col_id}']")
+        if not hdr:
+            return False
+        page.evaluate("""([hdr, margin]) => {
             const c = document.querySelector('.ag-center-cols-viewport');
             const h = document.querySelector('.ag-header-viewport');
-            if (!c || !arguments[0]) return;
-            const t = Math.max(0, (arguments[0].offsetLeft || 0) - arguments[1]);
+            if (!c || !hdr) return;
+            const t = Math.max(0, (hdr.offsetLeft || 0) - margin);
             c.scrollLeft = t; if (h) h.scrollLeft = t;
-        """, hdr, int(margin))
+        }""", [hdr, int(margin)])
         time.sleep(0.08)
         return True
-    except NoSuchElementException:
+    except Exception:
         return False
 
 
-def vert_scroll_row_into_view(driver, row_id):
+def vert_scroll_row_into_view(page, row_id):
     try:
-        el = driver.find_element(
-            By.CSS_SELECTOR, f".ag-pinned-left-cols-container [row-id='{row_id}']"
-        )
-        driver.execute_script("arguments[0].scrollIntoView({block:'nearest'});", el)
+        el = page.query_selector(f".ag-pinned-left-cols-container [row-id='{row_id}']")
+        if not el:
+            return False
+        el.evaluate("(el) => el.scrollIntoView({block:'nearest'})")
         time.sleep(0.05)
         return True
-    except NoSuchElementException:
+    except Exception:
         return False
 
 
-def find_center_cell(driver, row_id, col_id):
+def find_center_cell(page, row_id, col_id):
+    return page.query_selector(
+        f".ag-center-cols-container [row-id='{row_id}'] [col-id='{col_id}']"
+    )
+
+
+def wait_for_cell(page, row_id, col_id, timeout=0.8):
+    sel = f".ag-center-cols-container [row-id='{row_id}'] [col-id='{col_id}']"
     try:
-        return driver.find_element(
-            By.CSS_SELECTOR,
-            f".ag-center-cols-container [row-id='{row_id}'] [col-id='{col_id}']"
-        )
-    except NoSuchElementException:
+        page.wait_for_selector(sel, timeout=timeout * 1000)
+        return page.query_selector(sel)
+    except PWTimeout:
         return None
 
 
-def wait_for_cell(driver, row_id, col_id, timeout=0.8):
-    try:
-        return WebDriverWait(driver, timeout, poll_frequency=0.1).until(
-            EC.presence_of_element_located((
-                By.CSS_SELECTOR,
-                f".ag-center-cols-container [row-id='{row_id}'] [col-id='{col_id}']"
-            ))
-        )
-    except TimeoutException:
+def ensure_cell_visible(page, row_id, col_id):
+    if not vert_scroll_row_into_view(page, row_id):
         return None
-
-
-def ensure_cell_visible(driver, row_id, col_id):
-    if not vert_scroll_row_into_view(driver, row_id):
-        return None
-    cell = find_center_cell(driver, row_id, col_id)
+    cell = find_center_cell(page, row_id, col_id)
     if cell:
         return cell
-    grid_scroll_left_edge(driver)
-    cell = wait_for_cell(driver, row_id, col_id)
+    grid_scroll_left_edge(page)
+    cell = wait_for_cell(page, row_id, col_id)
     if cell:
         return cell
-    if jump_to_header(driver, col_id):
-        cell = wait_for_cell(driver, row_id, col_id)
+    if jump_to_header(page, col_id):
+        cell = wait_for_cell(page, row_id, col_id)
         if cell:
             return cell
     for _ in range(18):
-        grid_scroll_by(driver, 200)
-        cell = wait_for_cell(driver, row_id, col_id)
+        grid_scroll_by(page, 200)
+        cell = wait_for_cell(page, row_id, col_id)
         if cell:
             return cell
-    grid_scroll_to(driver, get_grid_scroll_width(driver))
+    grid_scroll_to(page, get_grid_scroll_width(page))
     time.sleep(0.05)
-    jump_to_header(driver, col_id)
-    return wait_for_cell(driver, row_id, col_id)
+    jump_to_header(page, col_id)
+    return wait_for_cell(page, row_id, col_id)
 
 
 # ── right panel (odds history) helpers ───────────────────────────────────────
 
-def find_right_panel(driver):
-    roots = driver.find_elements(By.CSS_SELECTOR, "div.ag-root")
+def find_right_panel(page):
+    roots = page.query_selector_all("div.ag-root")
     rightmost, rightmost_x = None, -1
     for r in roots:
         try:
-            x = driver.execute_script(
-                "return arguments[0].getBoundingClientRect().x;", r
-            )
+            x = r.evaluate("(el) => el.getBoundingClientRect().x")
             if x > rightmost_x:
                 rightmost_x, rightmost = x, r
         except Exception:
@@ -380,13 +330,13 @@ def find_right_panel(driver):
 
 
 def get_panel_col_indices(panel):
-    headers = panel.find_elements(By.CSS_SELECTOR, ".ag-header .ag-header-cell")
+    headers = panel.query_selector_all(".ag-header .ag-header-cell")
     labels = []
     for h in headers:
         try:
-            labels.append(h.find_element(By.CSS_SELECTOR, ".ag-header-cell-text").text.strip().lower())
+            labels.append(h.query_selector(".ag-header-cell-text").inner_text().strip().lower())
         except Exception:
-            labels.append(h.text.strip().lower())
+            labels.append(h.inner_text().strip().lower())
 
     def idx_of(*keys):
         for i, t in enumerate(labels):
@@ -398,28 +348,28 @@ def get_panel_col_indices(panel):
     return idx_of("time", "timestamp", "updated"), idx_of("over"), idx_of("under")
 
 
-def wait_for_panel_rows(driver, timeout=4.0):
+def wait_for_panel_rows(page, timeout=4.0):
     end = time.time() + timeout
     while time.time() < end:
-        panel = find_right_panel(driver)
+        panel = find_right_panel(page)
         if panel:
-            rows = panel.find_elements(By.CSS_SELECTOR, ".ag-center-cols-container .ag-row")
+            rows = panel.query_selector_all(".ag-center-cols-container .ag-row")
             if rows:
                 return panel, rows
         time.sleep(0.1)
-    return find_right_panel(driver), []
+    return find_right_panel(page), []
 
 
 def extract_panel_history(panel):
     time_idx, over_idx, under_idx = get_panel_col_indices(panel)
     out = []
-    for r in panel.find_elements(By.CSS_SELECTOR, ".ag-center-cols-container .ag-row"):
-        cells = r.find_elements(By.CSS_SELECTOR, ".ag-cell")
+    for r in panel.query_selector_all(".ag-center-cols-container .ag-row"):
+        cells = r.query_selector_all(".ag-cell")
         if not cells:
             continue
-        ts  = cells[time_idx].text.strip()  if (time_idx  is not None and time_idx  < len(cells)) else ""
-        ov  = cells[over_idx].text.strip()  if (over_idx  is not None and over_idx  < len(cells)) else ""
-        un  = cells[under_idx].text.strip() if (under_idx is not None and under_idx < len(cells)) else ""
+        ts  = cells[time_idx].inner_text().strip()  if (time_idx  is not None and time_idx  < len(cells)) else ""
+        ov  = cells[over_idx].inner_text().strip()  if (over_idx  is not None and over_idx  < len(cells)) else ""
+        un  = cells[under_idx].inner_text().strip() if (under_idx is not None and under_idx < len(cells)) else ""
         ov_line, ov_odds = parse_line_and_odds(ov)
         un_line, un_odds = parse_line_and_odds(un)
         out.append((ts, ov_line, ov_odds, un_line, un_odds))
@@ -429,10 +379,10 @@ def extract_panel_history(panel):
 # ── EV% extraction ────────────────────────────────────────────────────────────
 
 def extract_ev(cell):
-    spans = cell.find_elements(By.XPATH, ".//span[contains(text(), '%')]")
+    spans = cell.query_selector_all("xpath=.//span[contains(text(), '%')]")
     vals = []
     for sp in spans:
-        t = sp.text.strip().replace("−", "-")
+        t = sp.inner_text().strip().replace("−", "-")
         m = re.search(r"[+-]?\d+(?:\.\d+)?\s*%", t)
         if m:
             v = m.group(0).replace(" ", "")
@@ -441,19 +391,19 @@ def extract_ev(cell):
     return vals[0] if len(vals) > 0 else "", vals[1] if len(vals) > 1 else ""
 
 
-def open_panel(driver, cell):
+def open_panel(page, cell):
     for selector in [".props-hover-cells span", None]:
         try:
             if selector:
-                targets = [c for c in cell.find_elements(By.CSS_SELECTOR, selector) if c.is_displayed()]
+                targets = [c for c in cell.query_selector_all(selector) if c.is_visible()]
                 target = targets[0] if targets else cell
             else:
                 target = cell
-            driver.execute_script("arguments[0].scrollIntoView({block:'nearest',inline:'center'});", target)
+            target.evaluate("(el) => el.scrollIntoView({block:'nearest',inline:'center'})")
             try:
                 target.click()
             except Exception:
-                driver.execute_script("arguments[0].click();", target)
+                target.evaluate("(el) => el.click()")
             time.sleep(0.25)
             return True
         except Exception:
@@ -463,17 +413,17 @@ def open_panel(driver, cell):
 
 # ── frozen column (player info) ───────────────────────────────────────────────
 
-def extract_frozen_info(driver, row_id):
+def extract_frozen_info(page, row_id):
     player, matchup = "N/A", "N/A"
     try:
-        frozen = driver.find_element(
-            By.CSS_SELECTOR, f".ag-pinned-left-cols-container [row-id='{row_id}']"
-        )
-        cells = frozen.find_elements(By.CLASS_NAME, "ag-cell")
+        frozen = page.query_selector(f".ag-pinned-left-cols-container [row-id='{row_id}']")
+        if not frozen:
+            return player, matchup
+        cells = frozen.query_selector_all(".ag-cell")
         if len(cells) > 1:
             try:
-                player  = cells[1].find_element(By.CSS_SELECTOR, "div[style*='font-size: 0.9rem']").text.strip()
-                matchup = cells[1].find_element(By.CSS_SELECTOR, "div[style*='font-size: 0.65rem']").text.strip().replace("\xa0", " ")
+                player  = cells[1].query_selector("div[style*='font-size: 0.9rem']").inner_text().strip()
+                matchup = cells[1].query_selector("div[style*='font-size: 0.65rem']").inner_text().strip().replace("\xa0", " ")
             except Exception:
                 pass
     except Exception:
@@ -484,26 +434,24 @@ def extract_frozen_info(driver, row_id):
 # ── row / cell processing ─────────────────────────────────────────────────────
 
 def cell_has_data(cell):
-    """Return True if the cell has any visible content (odds or EV%)."""
     try:
-        text = cell.text.strip()
-        return bool(text)
+        return bool(cell.inner_text().strip())
     except Exception:
         return False
 
 
-def process_cell(driver, cell, player, matchup, book, rows_out):
+def process_cell(page, cell, player, matchup, book, rows_out):
     if not cell_has_data(cell):
         print(f"  ⏭️  {book}: empty cell, skipping")
         return
 
     ev_over, ev_under = extract_ev(cell)
 
-    if not open_panel(driver, cell):
+    if not open_panel(page, cell):
         print(f"  ⚠️  {book}: could not open panel")
         return
 
-    panel, _ = wait_for_panel_rows(driver, timeout=4.0)
+    panel, _ = wait_for_panel_rows(page, timeout=4.0)
     if not panel:
         print(f"  ⚠️  {book}: panel not found")
         return
@@ -520,9 +468,6 @@ def process_cell(driver, cell, player, matchup, book, rows_out):
             s = str(val).rstrip("0").rstrip(".")
             return prefix + s
 
-        # Extract the date embedded in the panel timestamp (e.g. "04/13/2026 05:20 PM").
-        # Only include entries whose date matches TODAY. If the timestamp has no
-        # parseable date, skip it — we can't confirm it belongs to today.
         panel_date = normalize_date(ts)
         if panel_date != TODAY:
             continue
@@ -543,47 +488,45 @@ def process_cell(driver, cell, player, matchup, book, rows_out):
         })
 
 
-def process_row(driver, row_id, rows_out):
-    grid_scroll_left_edge(driver)
-    vert_scroll_row_into_view(driver, row_id)
-    player, matchup = extract_frozen_info(driver, row_id)
+def process_row(page, row_id, rows_out):
+    grid_scroll_left_edge(page)
+    vert_scroll_row_into_view(page, row_id)
+    player, matchup = extract_frozen_info(page, row_id)
 
     for book, col_id in SPORTSBOOK_COL_IDS.items():
         try:
-            cell = ensure_cell_visible(driver, row_id, col_id)
+            cell = ensure_cell_visible(page, row_id, col_id)
             if not cell:
-                # brute-force
-                grid_scroll_left_edge(driver)
+                grid_scroll_left_edge(page)
                 for _ in range(24):
-                    cell = wait_for_cell(driver, row_id, col_id, timeout=0.25)
+                    cell = wait_for_cell(page, row_id, col_id, timeout=0.25)
                     if cell:
                         break
-                    grid_scroll_by(driver, 120)
+                    grid_scroll_by(page, 120)
             if not cell:
                 print(f"  ⛔ {book}: cell not found for row {row_id}")
                 continue
 
-            process_cell(driver, cell, player, matchup, book, rows_out)
+            process_cell(page, cell, player, matchup, book, rows_out)
             print(f"  ✅ {player} | {book}")
 
-        except StaleElementReferenceException:
-            try:
-                cell = ensure_cell_visible(driver, row_id, col_id)
-                if cell:
-                    process_cell(driver, cell, player, matchup, book, rows_out)
-            except Exception as e:
-                print(f"  ♻️  {book}: stale retry failed — {e}")
         except Exception as e:
-            print(f"  ⚠️  {book} row {row_id}: {e}")
+            # Playwright doesn't have StaleElementReferenceException — just retry once
+            try:
+                cell = ensure_cell_visible(page, row_id, col_id)
+                if cell:
+                    process_cell(page, cell, player, matchup, book, rows_out)
+            except Exception as e2:
+                print(f"  ⚠️  {book} row {row_id}: {e2}")
 
 
-def scroll_and_process_all_rows(driver, rows_out):
+def scroll_and_process_all_rows(page, rows_out):
     seen = set()
     finalized = load_finalized_keys()
     print(f"ℹ️  Skipping {len(finalized)} already-finalized player+date combos")
 
     for attempt in range(60):
-        rows = driver.find_elements(By.CSS_SELECTOR, ".ag-center-cols-container .ag-row")
+        rows = page.query_selector_all(".ag-center-cols-container .ag-row")
         new_found = False
         for row in rows:
             row_id = row.get_attribute("row-id")
@@ -591,34 +534,29 @@ def scroll_and_process_all_rows(driver, rows_out):
                 continue
             seen.add(row_id)
 
-            # Check if this player already has a finalized result for TODAY
-            player, matchup = extract_frozen_info(driver, row_id)
+            player, matchup = extract_frozen_info(page, row_id)
             player_lower = player.strip().lower()
             if (player_lower, TODAY) in finalized:
                 print(f"  ⏭️  {player} — already finalized for {TODAY}, skipping")
                 continue
 
             new_found = True
-            process_row(driver, row_id, rows_out)
+            process_row(page, row_id, rows_out)
 
         if not new_found:
             print("🛑 No new rows — done scrolling")
             break
 
-        driver.execute_script("""
+        page.evaluate("""() => {
             const c = document.querySelector('.ag-body-viewport');
             if (c) c.scrollBy(0, 540);
-        """)
+        }""")
         time.sleep(0.5)
 
 
 # ── CSV save ──────────────────────────────────────────────────────────────────
 
 def load_finalized_keys():
-    """
-    Returns a set of (player_lower, date) tuples that already have a
-    final result (Win/Loss/Push) in the CSV. These should not be re-scraped.
-    """
     finalized = set()
     if not DATA_FILE.exists() or DATA_FILE.stat().st_size == 0:
         return finalized
@@ -652,52 +590,42 @@ def append_to_csv(rows):
     _dedup_csv()
 
 
-ROLLING_DAYS = 30  # full detail kept for this many days; older data is archived
+ROLLING_DAYS = 30
 
 
 def _archive_compress(df_old):
-    """Compress old rows to first+last per player/sportsbook/date/line.
-
-    Groups by line value so that when the line moves during the day
-    (e.g. o6.5 -> o5.5), build_records() still sees the opening and closing
-    odds at the closing line and can compute movement correctly.
-    """
     import pandas as pd
     key = ['Player', 'Matchup', 'Sportsbook', 'Date', 'Over Line', 'Under Line']
     existing_key = [c for c in key if c in df_old.columns]
     parts = []
     for _, grp in df_old.groupby(existing_key, sort=False, dropna=False):
-        parts.append(grp.head(1))
-        if len(grp) > 1:
-            parts.append(grp.tail(1))
-    if not parts:
-        return df_old.head(0)
-    return pd.concat(parts, ignore_index=True).drop_duplicates()
+        parts.append(grp.iloc[[0, -1]] if len(grp) > 1 else grp)
+    return pd.concat(parts, ignore_index=True) if parts else df_old.iloc[0:0]
 
 
 def _normalize_odds(series):
-    """Normalize odds column to '+110'/'-120' integer string format."""
-    def fmt(v):
-        if not v or str(v).strip() == '':
+    import pandas as pd
+    def fix(v):
+        if pd.isna(v) or str(v).strip() == "":
             return v
+        s = str(v).strip()
         try:
-            n = int(float(str(v).strip().replace('+', '')))
-            return f'+{n}' if n >= 0 else str(n)
-        except (ValueError, TypeError):
-            return v
-    return series.apply(fmt)
+            f = float(s)
+            i = int(f)
+            if f == i:
+                return ("+" if i > 0 else "") + str(i)
+        except ValueError:
+            pass
+        return s
+    return series.map(fix)
 
 
 def _dedup_csv():
-    """Dedup intraday rows; archive-compress data older than ROLLING_DAYS."""
+    import pandas as pd
     try:
-        import pandas as pd
-        from datetime import datetime, timedelta
-        df = pd.read_csv(DATA_FILE, dtype=str, on_bad_lines='warn')
-        before = len(df)
+        before = len(pd.read_csv(DATA_FILE, dtype=str))
+        df = pd.read_csv(DATA_FILE, dtype=str)
 
-        # Normalize odds to canonical integer format (+110/-120) — the scraper
-        # may write floats like "110.0" if Unabated's grid returns numeric values.
         normalized = False
         for col in ('Over Odds', 'Under Odds'):
             if col in df.columns:
@@ -706,10 +634,6 @@ def _dedup_csv():
                     df[col] = fixed
                     normalized = True
 
-        # Include EV% in dedup key so that a pre-game row with EV% and a
-        # post-game row with blank EV% (same odds/time) are kept as separate
-        # entries. Without this, keep='last' would overwrite the EV% row with
-        # the blank one, causing picks to lose their EV% after game start.
         dedup_cols = ['Player','Matchup','Sportsbook','Date','Time',
                       'Over Odds','Under Odds','Over Line','Under Line',
                       'Over EV%','Under EV%']
@@ -736,27 +660,27 @@ def _dedup_csv():
 
 def main():
     rows_out = []
-    driver = setup_driver()
+    browser, page = setup_browser()
     try:
-        login(driver)
-        driver.get("https://unabated.com/mlb/props")
-        WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".ag-center-cols-container"))
-        )
+        login(page)
+        page.goto("https://unabated.com/mlb/props")
+        page.wait_for_selector(".ag-center-cols-container", timeout=30000)
         time.sleep(3)
-        click_simulate(driver)
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".ag-center-cols-container .ag-row"))
-        )
-        detect_col_ids(driver)
-        scroll_and_process_all_rows(driver, rows_out)
+        click_simulate(page)
+        page.wait_for_selector(".ag-center-cols-container .ag-row", timeout=20000)
+        detect_col_ids(page)
+        scroll_and_process_all_rows(page, rows_out)
     except Exception as e:
         print(f"\n❌ Fatal error: {e}")
     finally:
         if rows_out:
             append_to_csv(rows_out)
         try:
-            driver.quit()
+            browser.close()
+        except Exception:
+            pass
+        try:
+            _PW.stop()
         except Exception:
             pass
 

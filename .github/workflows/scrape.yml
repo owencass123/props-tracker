@@ -26,15 +26,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Verify Chrome and ChromeDriver
-        run: |
-          echo "Chrome: $(google-chrome --version)"
-          echo "ChromeDriver: $(chromedriver --version)"
-          echo "Chrome path: $(which google-chrome)"
-          echo "ChromeDriver path: $(which chromedriver)"
-
       - name: Install Python dependencies
         run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: playwright install --with-deps chromium
 
       - name: Run scraper
         env:
