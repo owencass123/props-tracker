@@ -145,19 +145,13 @@ _CD_LOG = "/tmp/chromedriver.log"
 
 def setup_driver():
     opts = Options()
-    chrome_bin = (shutil.which("google-chrome")
-                  or shutil.which("google-chrome-stable")
-                  or "/usr/bin/google-chrome")
-    print(f"  Chrome binary: {chrome_bin}")
-    opts.binary_location = chrome_bin
-    opts.add_argument("--headless")
+    opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
     opts.add_argument("--window-size=1920,1080")
-    opts.add_argument("--disable-blink-features=AutomationControlled")
     cd = shutil.which("chromedriver")
-    print(f"  ChromeDriver:  {cd}")
+    print(f"  ChromeDriver: {cd}")
     service = Service(cd, log_output=_CD_LOG) if cd else Service(log_output=_CD_LOG)
     try:
         driver = webdriver.Chrome(service=service, options=opts)
@@ -169,9 +163,6 @@ def setup_driver():
         except Exception as le:
             print(f"  (could not read chromedriver log: {le})")
         raise
-    driver.execute_script(
-        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-    )
     return driver
 
 

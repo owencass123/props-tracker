@@ -26,25 +26,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Chrome and matching ChromeDriver
+      - name: Verify Chrome and ChromeDriver
         run: |
-          wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
-          CHROME_VER=$(google-chrome --version | grep -oP '[\d.]+')
-          echo "Chrome version: $CHROME_VER"
-          wget -q "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VER}/linux64/chromedriver-linux64.zip" -O chromedriver.zip
-          unzip -q chromedriver.zip
-          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
-          sudo chmod +x /usr/local/bin/chromedriver
-          chromedriver --version
-
-      - name: Test Chrome can launch
-        run: |
-          echo "Chrome binary: $(which google-chrome)"
-          echo "ChromeDriver binary: $(which chromedriver)"
-          timeout 10 google-chrome --headless --no-sandbox --disable-dev-shm-usage \
-            --dump-dom about:blank 2>&1 | head -5 \
-            && echo "✅ Chrome launched OK" || echo "❌ Chrome failed standalone"
+          echo "Chrome: $(google-chrome --version)"
+          echo "ChromeDriver: $(chromedriver --version)"
+          echo "Chrome path: $(which google-chrome)"
+          echo "ChromeDriver path: $(which chromedriver)"
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
