@@ -141,12 +141,14 @@ def detect_col_ids(driver):
 
 # ── driver setup ──────────────────────────────────────────────────────────────
 
+_CD_LOG = "/tmp/chromedriver.log"
+
 def setup_driver():
     opts = Options()
-    # Explicitly point at the Chrome binary so ChromeDriver doesn't pick up a stale one
     chrome_bin = (shutil.which("google-chrome")
                   or shutil.which("google-chrome-stable")
                   or "/usr/bin/google-chrome")
+    print(f"  Chrome binary: {chrome_bin}")
     opts.binary_location = chrome_bin
     opts.add_argument("--headless")
     opts.add_argument("--no-sandbox")
@@ -155,8 +157,18 @@ def setup_driver():
     opts.add_argument("--window-size=1920,1080")
     opts.add_argument("--disable-blink-features=AutomationControlled")
     cd = shutil.which("chromedriver")
-    service = Service(cd) if cd else Service()
-    driver = webdriver.Chrome(service=service, options=opts)
+    print(f"  ChromeDriver:  {cd}")
+    service = Service(cd, log_output=_CD_LOG) if cd else Service(log_output=_CD_LOG)
+    try:
+        driver = webdriver.Chrome(service=service, options=opts)
+    except Exception:
+        try:
+            with open(_CD_LOG) as f:
+                print("=== ChromeDriver log ===")
+                print(f.read()[-4000:])
+        except Exception as le:
+            print(f"  (could not read chromedriver log: {le})")
+        raise
     driver.execute_script(
         "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
     )
