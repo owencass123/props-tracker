@@ -38,6 +38,14 @@ jobs:
           UNABATED_PASSWORD: ${{ secrets.UNABATED_PASSWORD }}
         run: python scraper.py
 
+      - name: Upload debug screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: login-screenshot
+          path: /tmp/login_page.png
+          if-no-files-found: ignore
+
       - name: Update results (MLB API)
         run: python update_results.py
 

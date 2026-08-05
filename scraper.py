@@ -135,7 +135,44 @@ def setup_browser():
 
 def login(page):
     page.goto("https://unabated.com")
-    page.locator("xpath=//button[normalize-space()='LOGIN']").click(timeout=15000)
+    page.wait_for_load_state("domcontentloaded")
+    time.sleep(2)
+
+    # Try multiple login button patterns in order
+    login_selectors = [
+        "xpath=//button[normalize-space()='LOGIN']",
+        "xpath=//button[normalize-space()='Log In']",
+        "xpath=//button[normalize-space()='Log in']",
+        "xpath=//a[normalize-space()='LOGIN']",
+        "xpath=//a[normalize-space()='Log In']",
+        "xpath=//button[contains(translate(normalize-space(.), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'LOG')]",
+        "[data-testid*='login']",
+        "[class*='login']",
+        "text=LOGIN",
+        "text=Log In",
+        "text=Log in",
+    ]
+
+    clicked = False
+    for sel in login_selectors:
+        try:
+            el = page.wait_for_selector(sel, timeout=3000, state="visible")
+            if el:
+                el.click()
+                clicked = True
+                print(f"✅ Clicked login via: {sel}")
+                break
+        except Exception:
+            continue
+
+    if not clicked:
+        page.screenshot(path="/tmp/login_page.png", full_page=True)
+        # Print visible button/link text for debugging
+        btns = page.query_selector_all("button, a")
+        texts = [b.inner_text().strip() for b in btns if b.inner_text().strip()][:20]
+        print(f"⚠️  Login button not found. Visible buttons/links: {texts}")
+        raise RuntimeError("Could not find login button — screenshot saved to /tmp/login_page.png")
+
     page.wait_for_selector("#username", timeout=10000)
     page.fill("#username", USERNAME)
     page.fill("#password", PASSWORD)
