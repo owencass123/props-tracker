@@ -663,7 +663,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Picks -->
   <div id="tab-picks" class="tab-panel section">
-    <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor &gt;19.5 pts &amp; EV% &ge; 5% · 1 unit = $100 risked</span></h2>
+    <h2>Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor &gt;19.5 pts · 1 unit = $100 risked</span></h2>
     <div id="units-summary"></div>
     <div id="units-content" style="margin-top:24px"></div>
   </div>
@@ -684,7 +684,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- Potential Picks -->
   <div id="tab-potential" class="tab-panel section">
-    <h2>Potential Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor 10–19.5 pts &amp; EV% &ge; 5% (not yet in Picks)</span></h2>
+    <h2>Potential Picks <span style="font-size:13px;font-weight:400;color:var(--sub)">— Moved in favor 10–19.5 pts (not yet in Picks)</span></h2>
     <div id="potential-content" style="margin-top:16px"></div>
   </div>
 
@@ -1315,16 +1315,15 @@ function removeManualPick(r){
 }
 function isManualPick(r){ return _manualPicks.has(pickKey(r)); }
 
-// Picks: best book moved in favor 20+ pts AND EV >= 5%, OR hardcoded, OR manually promoted
 function isPick(r){
   if(isHardcodedPick(r)) return true;
   if(isManualPick(r)) return true;
   const s=_pickSignal(r);
-  if(s.ev===null||s.movFavor!==true) return false;
+  if(s.movFavor!==true) return false;
   const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
   if(o!==null&&o!==undefined&&o<=-200) return false;
   const absMov=s.mov!==null?Math.abs(s.mov):0;
-  return s.ev>=5 && absMov>19.5;
+  return absMov>19.5;
 }
 
 // Picks 2: Tier A = mov≥25 any EV; Tier B = mov 20-24 EV≥5%
@@ -1353,15 +1352,13 @@ function isPick3(r){
   return s.ev!==null && s.ev>=5 && absMov>=20;
 }
 
-// Potential Picks: avg of favorable movers 10–19.5 pts AND EV >= 5%, not already a Pick
 function isPotentialPick(r){
   if(isPick(r)) return false;
-  const s=_pickSignal(r);
-  if(s.ev===null||s.movFavor!==true) return false;
-  const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
+  if(r.movFavor!==true) return false;
+  const o=r.lastOdds!==null&&r.lastOdds!==undefined?r.lastOdds:r.firstOdds;
   if(o!==null&&o!==undefined&&o<=-200) return false;
-  const absMov=s.mov!==null?Math.abs(s.mov):0;
-  return s.ev>=5 && absMov>=10 && absMov<=19.5;
+  const absMov=r.movement!==null?Math.abs(r.movement):0;
+  return absMov>=10 && absMov<=19.5;
 }
 
 function refreshPicks(){
@@ -1469,7 +1466,7 @@ function calcPnl(result, odds, units){
 
 function buildUnitsTable(base){
   _buildPicksTab('units-summary','units-content',[
-    {label:'1 Unit',desc:'Moved in favor &gt;19.5 pts &amp; EV\u22655%',units:1,fn:r=>isPick(r)}
+    {label:'1 Unit',desc:'Moved in favor &gt;19.5 pts',units:1,fn:r=>isPick(r)}
   ], base, 'p1');
 }
 function buildPicks2Table(base){
