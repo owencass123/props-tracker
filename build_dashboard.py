@@ -1318,11 +1318,10 @@ function isManualPick(r){ return _manualPicks.has(pickKey(r)); }
 function isPick(r){
   if(isHardcodedPick(r)) return true;
   if(isManualPick(r)) return true;
-  const s=_pickSignal(r);
-  if(s.movFavor!==true) return false;
-  const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
+  if(r.movFavor!==true) return false;
+  const o=r.lastOdds!==null&&r.lastOdds!==undefined?r.lastOdds:r.firstOdds;
   if(o!==null&&o!==undefined&&o<=-200) return false;
-  const absMov=s.mov!==null?Math.abs(s.mov):0;
+  const absMov=r.movement!==null?Math.abs(r.movement):0;
   return absMov>19.5;
 }
 
