@@ -1321,18 +1321,19 @@ function isPick(r){
 
 // ── Picks 2 grid state ────────────────────────────────────────────────────────
 const _P2_EV_ROWS=[
-  {label:'Any EV',    val:-100},
-  {label:'EV ≥ -25%', val:-25},
-  {label:'EV ≥ -20%', val:-20},
-  {label:'EV ≥ -15%', val:-15},
-  {label:'EV ≥ -10%', val:-10},
-  {label:'EV ≥ -5%',  val:-5},
-  {label:'EV ≥ 0%',   val:0},
-  {label:'EV ≥ 5%',   val:5},
-  {label:'EV ≥ 10%',  val:10},
-  {label:'EV ≥ 15%',  val:15},
-  {label:'EV ≥ 20%',  val:20},
-  {label:'EV ≥ 25%',  val:25},
+  {label:'Any EV',    val:-100, dir:'gte'},
+  {label:'EV ≤ -25%', val:-25,  dir:'lte'},
+  {label:'EV ≤ -20%', val:-20,  dir:'lte'},
+  {label:'EV ≤ -15%', val:-15,  dir:'lte'},
+  {label:'EV ≤ -10%', val:-10,  dir:'lte'},
+  {label:'EV ≤ -5%',  val:-5,   dir:'lte'},
+  {label:'EV ≤ 0%',   val:0,    dir:'lte'},
+  {label:'EV ≥ 0%',   val:0,    dir:'gte'},
+  {label:'EV ≥ 5%',   val:5,    dir:'gte'},
+  {label:'EV ≥ 10%',  val:10,   dir:'gte'},
+  {label:'EV ≥ 15%',  val:15,   dir:'gte'},
+  {label:'EV ≥ 20%',  val:20,   dir:'gte'},
+  {label:'EV ≥ 25%',  val:25,   dir:'gte'},
 ];
 const _P2_MOV_COLS=[
   {label:'mov ≥5',  val:5},
@@ -1345,12 +1346,12 @@ const _P2_MOV_COLS=[
 let _p2Selected=(()=>{
   try{
     const s=localStorage.getItem('p2_selections');
-    return s?new Set(JSON.parse(s)):new Set(['0|20','5|10']);
-  }catch(e){return new Set(['0|20','5|10']);}
+    return s?new Set(JSON.parse(s)):new Set(['0|20|gte','5|10|gte']);
+  }catch(e){return new Set(['0|20|gte','5|10|gte']);}
 })();
 function _saveP2(){try{localStorage.setItem('p2_selections',JSON.stringify([..._p2Selected]));}catch(e){}}
-function toggleP2Cell(evVal,movVal){
-  const k=evVal+'|'+movVal;
+function toggleP2Cell(evVal,movVal,dir){
+  const k=evVal+'|'+movVal+'|'+dir;
   _p2Selected.has(k)?_p2Selected.delete(k):_p2Selected.add(k);
   _saveP2();
   buildPicks2Table(getFilteredForDisplay());
@@ -1365,8 +1366,10 @@ function isPick2(r){
   if(!_p2Selected.size) return false;
   const absMov=r.movement!==null?Math.abs(r.movement):0;
   return [..._p2Selected].some(k=>{
-    const [evT,movT]=k.split('|').map(Number);
-    return r.ev!==null && r.ev>=evT && absMov>=movT;
+    const parts=k.split('|');
+    const evT=Number(parts[0]),movT=Number(parts[1]),dir=parts[2]||'gte';
+    const evOk=r.ev!==null&&(dir==='lte'?r.ev<=evT:r.ev>=evT);
+    return evOk && absMov>=movT;
   });
 }
 
@@ -1496,9 +1499,10 @@ function buildPicks2Table(base){
   _P2_EV_ROWS.forEach(row=>{
     html+=`<tr><td style="padding:6px 10px;font-weight:600;color:var(--sub);white-space:nowrap;font-size:12px">${row.label}</td>`;
     _P2_MOV_COLS.forEach(col=>{
-      const key=row.val+'|'+col.val;
+      const key=row.val+'|'+col.val+'|'+row.dir;
       const sel=_p2Selected.has(key);
-      const rows=allGraded.filter(r=>r.movFavor===true&&r.ev!==null&&r.ev>=row.val&&r.movement!==null&&Math.abs(r.movement)>=col.val);
+      const evFilter=row.dir==='lte'?(r=>r.ev<=row.val):(r=>r.ev>=row.val);
+      const rows=allGraded.filter(r=>r.movFavor===true&&r.ev!==null&&evFilter(r)&&r.movement!==null&&Math.abs(r.movement)>=col.val);
       const w=rows.filter(r=>r.result==='Win').length;
       const n=rows.length;
       const pct=n>0?w/n:null;
@@ -1507,7 +1511,7 @@ function buildPicks2Table(base){
       const cellStyle=sel
         ?'background:#0a2a0a;border:2px solid var(--accent);'
         :'background:#1e2130;border:2px solid transparent;';
-      html+=`<td onclick="toggleP2Cell(${row.val},${col.val})"
+      html+=`<td onclick="toggleP2Cell(${row.val},${col.val},'${row.dir}')"
                style="${cellStyle}padding:9px 14px;text-align:center;border-radius:6px;cursor:pointer;min-width:70px;">
                <div style="font-weight:700;color:${rateColor};font-size:13px">${rateStr}</div>
                <div style="font-size:10px;color:var(--sub);margin-top:2px">n=${n}</div>
@@ -1517,13 +1521,20 @@ function buildPicks2Table(base){
   });
   html+='</tbody></table></div>';
   if(_p2Selected.size){
-    const labels=[..._p2Selected].map(k=>{const[e,m]=k.split('|');return `<span style="color:var(--accent)">${e==='-100'?'Any EV':'EV\u2265'+(parseFloat(e)>=0?'+':'')+e+'%'} &amp; mov\u2265${m}</span>`;});
+    const labels=[..._p2Selected].map(k=>{
+      const parts=k.split('|');const e=parts[0],m=parts[1],d=parts[2]||'gte';
+      const evLabel=e==='-100'?'Any EV':`EV${d==='lte'?'\u2264':'\u2265'}${parseFloat(e)>=0?'+':''}${e}%`;
+      return `<span style="color:var(--accent)">${evLabel} &amp; mov\u2265${m}</span>`;
+    });
     html+=`<p style="font-size:12px;color:var(--sub);margin-bottom:14px">Selected: ${labels.join(' <span style="color:var(--border)">|</span> ')}</p>`;
   } else {
     html+=`<p style="font-size:12px;color:var(--warn);margin-bottom:14px">No criteria selected \u2014 click a cell above.</p>`;
   }
   document.getElementById('picks2-grid').innerHTML=html;
-  const desc=_p2Selected.size?[..._p2Selected].map(k=>{const[e,m]=k.split('|');return `${e==='-100'?'Any EV':'EV\u2265'+e+'%'}&mov\u2265${m}`;}).join(' OR '):'none';
+  const desc=_p2Selected.size?[..._p2Selected].map(k=>{
+    const parts=k.split('|');const e=parts[0],m=parts[1],d=parts[2]||'gte';
+    return `${e==='-100'?'Any EV':`EV${d==='lte'?'\u2264':'\u2265'}${e}%`}&mov\u2265${m}`;
+  }).join(' OR '):'none';
   _buildPicksTab('picks2-summary','picks2-content',[
     {label:'1 Unit',desc,units:1,fn:r=>isPick2(r)}
   ], base, 'p2');
