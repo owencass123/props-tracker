@@ -1490,7 +1490,8 @@ function buildUnitsTable(base){
   ], base, 'p1');
 }
 function buildPicks2Table(base){
-  const allGraded=RAW.filter(r=>r.result==='Win'||r.result==='Loss');
+  const baseGraded=base.filter(r=>r.result==='Win'||r.result==='Loss');
+  const _oddsOk=r=>{const o=r.lastOdds!==null&&r.lastOdds!==undefined?r.lastOdds:r.firstOdds;return o===null||o>-200;};
   const thS='padding:6px 10px;text-align:center;color:var(--sub);font-size:11px;white-space:nowrap;font-weight:600;';
   let html='<div style="overflow-x:auto;margin-bottom:16px"><table style="border-collapse:separate;border-spacing:3px;">';
   html+=`<thead><tr><th style="${thS};text-align:left;color:var(--sub)"></th>`;
@@ -1502,7 +1503,7 @@ function buildPicks2Table(base){
       const key=row.val+'|'+col.val+'|'+row.dir;
       const sel=_p2Selected.has(key);
       const evFilter=row.dir==='lte'?(r=>r.ev<=row.val):(r=>r.ev>=row.val);
-      const rows=allGraded.filter(r=>r.movFavor===true&&r.ev!==null&&evFilter(r)&&r.movement!==null&&Math.abs(r.movement)>=col.val);
+      const rows=baseGraded.filter(r=>r.movFavor===true&&r.ev!==null&&evFilter(r)&&r.movement!==null&&Math.abs(r.movement)>=col.val&&_oddsOk(r));
       const w=rows.filter(r=>r.result==='Win').length;
       const n=rows.length;
       const pct=n>0?w/n:null;
