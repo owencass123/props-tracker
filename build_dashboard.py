@@ -571,7 +571,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="tab" onclick="showTab('line')">By Line</button>
     <button class="tab" onclick="showTab('picks')">Picks</button>
     <button class="tab" onclick="showTab('picks2')">Picks 2</button>
-    <button class="tab" onclick="showTab('picks3')">Picks 3</button>
     <button class="tab" onclick="showTab('potential')">Potential Picks</button>
     <button class="tab" onclick="showTab('raw')">Raw Data</button>
   </div>
@@ -668,18 +667,72 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="units-content" style="margin-top:24px"></div>
   </div>
 
-  <!-- Picks 2: two-tier (mov≥25 any EV + mov 20-24 EV≥5%) -->
+  <!-- Picks 2: configurable criteria -->
   <div id="tab-picks2" class="tab-panel section">
-    <h2>Picks 2 <span style="font-size:13px;font-weight:400;color:var(--sub)">— mov&ge;25 any EV, or mov 20&ndash;24 &amp; EV&ge;5% &middot; 1 unit = $100 risked</span></h2>
+    <h2>Picks 2 <span style="font-size:13px;font-weight:400;color:var(--sub)">— custom criteria &middot; 1 unit = $100 risked</span></h2>
+    <div style="display:flex;flex-wrap:wrap;gap:20px;margin-bottom:16px;background:#252836;border-radius:8px;padding:14px;align-items:flex-start">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;width:100%;margin-bottom:-6px">Qualifies if Tier A OR Tier B is met &middot; moved in favor required for both</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div style="font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;width:100%;margin-bottom:-4px">Tier A</div>
+        <div class="filter-group">
+          <label>EV% &ge;</label>
+          <select id="p2-ev-a" onchange="buildPicks2Table(getFilteredForDisplay())">
+            <option value="-100">Any EV</option>
+            <option value="-10">-10%+</option>
+            <option value="-5">-5%+</option>
+            <option value="0" selected>0%+</option>
+            <option value="5">5%+</option>
+            <option value="10">10%+</option>
+            <option value="15">15%+</option>
+            <option value="20">20%+</option>
+            <option value="25">25%+</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Movement &ge;</label>
+          <select id="p2-mov-a" onchange="buildPicks2Table(getFilteredForDisplay())">
+            <option value="0">Any</option>
+            <option value="5">5+</option>
+            <option value="10">10+</option>
+            <option value="15">15+</option>
+            <option value="20" selected>20+</option>
+            <option value="25">25+</option>
+            <option value="30">30+</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div style="font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;width:100%;margin-bottom:-4px">Tier B</div>
+        <div class="filter-group">
+          <label>EV% &ge;</label>
+          <select id="p2-ev-b" onchange="buildPicks2Table(getFilteredForDisplay())">
+            <option value="-100">Any EV</option>
+            <option value="-10">-10%+</option>
+            <option value="-5">-5%+</option>
+            <option value="0">0%+</option>
+            <option value="5" selected>5%+</option>
+            <option value="10">10%+</option>
+            <option value="15">15%+</option>
+            <option value="20">20%+</option>
+            <option value="25">25%+</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Movement &ge;</label>
+          <select id="p2-mov-b" onchange="buildPicks2Table(getFilteredForDisplay())">
+            <option value="0">Any</option>
+            <option value="5">5+</option>
+            <option value="10" selected>10+</option>
+            <option value="15">15+</option>
+            <option value="20">20+</option>
+            <option value="25">25+</option>
+            <option value="30">30+</option>
+          </select>
+        </div>
+      </div>
+    </div>
     <div id="picks2-summary"></div>
     <div id="picks2-content" style="margin-top:24px"></div>
-  </div>
-
-  <!-- Picks 3: mov≥25 negative EV only + mov 20-24 EV≥5% -->
-  <div id="tab-picks3" class="tab-panel section">
-    <h2>Picks 3 <span style="font-size:13px;font-weight:400;color:var(--sub)">— mov&ge;25 &amp; EV&lt;0%, or mov 20&ndash;24 &amp; EV&ge;5% &middot; 1 unit = $100 risked</span></h2>
-    <div id="picks3-summary"></div>
-    <div id="picks3-content" style="margin-top:24px"></div>
   </div>
 
   <!-- Potential Picks -->
@@ -1329,26 +1382,17 @@ function isPick(r){
 function isPick2(r){
   if(isHardcodedPick(r)) return true;
   if(isManualPick(r)) return true;
-  const s=_pickSignal(r);
-  if(s.movFavor!==true) return false;
-  const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
+  if(r.movFavor!==true) return false;
+  const o=r.lastOdds!==null&&r.lastOdds!==undefined?r.lastOdds:r.firstOdds;
   if(o!==null&&o!==undefined&&o<=-200) return false;
-  const absMov=s.mov!==null?Math.abs(s.mov):0;
-  if(absMov>=25) return s.ev!==null;
-  return s.ev!==null && s.ev>=5 && absMov>=20;
-}
-
-// Picks 3: mov≥25 negative EV only; + mov 20-24 EV≥5%
-function isPick3(r){
-  if(isHardcodedPick(r)) return true;
-  if(isManualPick(r)) return true;
-  const s=_pickSignal(r);
-  if(s.movFavor!==true) return false;
-  const o=s.lastOdds!==null&&s.lastOdds!==undefined?s.lastOdds:s.firstOdds;
-  if(o!==null&&o!==undefined&&o<=-200) return false;
-  const absMov=s.mov!==null?Math.abs(s.mov):0;
-  if(absMov>=25) return s.ev!==null && s.ev<0;
-  return s.ev!==null && s.ev>=5 && absMov>=20;
+  const absMov=r.movement!==null?Math.abs(r.movement):0;
+  const evA=parseFloat(document.getElementById('p2-ev-a').value);
+  const movA=parseFloat(document.getElementById('p2-mov-a').value);
+  const evB=parseFloat(document.getElementById('p2-ev-b').value);
+  const movB=parseFloat(document.getElementById('p2-mov-b').value);
+  const tierA=r.ev!==null && r.ev>=evA && absMov>=movA;
+  const tierB=r.ev!==null && r.ev>=evB && absMov>=movB;
+  return tierA || tierB;
 }
 
 function isPotentialPick(r){
@@ -1366,7 +1410,6 @@ function refreshPicks(){
   const display = getFilteredForDisplay();
   buildUnitsTable(display);
   buildPicks2Table(display);
-  buildPicks3Table(display);
   buildPotentialTable(display);
 }
 
@@ -1469,14 +1512,16 @@ function buildUnitsTable(base){
   ], base, 'p1');
 }
 function buildPicks2Table(base){
+  const evA=document.getElementById('p2-ev-a').value;
+  const movA=document.getElementById('p2-mov-a').value;
+  const evB=document.getElementById('p2-ev-b').value;
+  const movB=document.getElementById('p2-mov-b').value;
+  const fmtEv=v=>v==='-100'?'Any EV':`EV\u2265${parseFloat(v)>=0?'+':''}${v}%`;
+  const fmtMov=v=>v==='0'?'any mov':`mov\u2265${v}`;
+  const desc=`Tier A: ${fmtEv(evA)} & ${fmtMov(movA)}  \u00b7  Tier B: ${fmtEv(evB)} & ${fmtMov(movB)}`;
   _buildPicksTab('picks2-summary','picks2-content',[
-    {label:'1 Unit',desc:'mov\u226525 any EV, or mov 20\u201324 &amp; EV\u22655%',units:1,fn:r=>isPick2(r)}
+    {label:'1 Unit',desc,units:1,fn:r=>isPick2(r)}
   ], base, 'p2');
-}
-function buildPicks3Table(base){
-  _buildPicksTab('picks3-summary','picks3-content',[
-    {label:'1 Unit',desc:'mov\u226525 negative EV only, or mov 20\u201324 &amp; EV\u22655%',units:1,fn:r=>isPick3(r)}
-  ], base, 'p3');
 }
 
 function _buildPicksTab(summaryId, contentId, tiers, base, prefix){
@@ -1833,7 +1878,6 @@ function refresh(){
   buildPlayerTable(display);
   buildUnitsTable(display);
   buildPicks2Table(display);
-  buildPicks3Table(display);
   buildPotentialTable(display);
   buildRawTable(display);
 }
