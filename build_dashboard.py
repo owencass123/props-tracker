@@ -667,70 +667,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="units-content" style="margin-top:24px"></div>
   </div>
 
-  <!-- Picks 2: configurable criteria -->
+  <!-- Picks 2: clickable grid criteria -->
   <div id="tab-picks2" class="tab-panel section">
-    <h2>Picks 2 <span style="font-size:13px;font-weight:400;color:var(--sub)">— custom criteria &middot; 1 unit = $100 risked</span></h2>
-    <div style="display:flex;flex-wrap:wrap;gap:20px;margin-bottom:16px;background:#252836;border-radius:8px;padding:14px;align-items:flex-start">
-      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;width:100%;margin-bottom:-6px">Qualifies if Tier A OR Tier B is met &middot; moved in favor required for both</div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
-        <div style="font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;width:100%;margin-bottom:-4px">Tier A</div>
-        <div class="filter-group">
-          <label>EV% &ge;</label>
-          <select id="p2-ev-a" onchange="buildPicks2Table(getFilteredForDisplay())">
-            <option value="-100">Any EV</option>
-            <option value="-10">-10%+</option>
-            <option value="-5">-5%+</option>
-            <option value="0" selected>0%+</option>
-            <option value="5">5%+</option>
-            <option value="10">10%+</option>
-            <option value="15">15%+</option>
-            <option value="20">20%+</option>
-            <option value="25">25%+</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label>Movement &ge;</label>
-          <select id="p2-mov-a" onchange="buildPicks2Table(getFilteredForDisplay())">
-            <option value="0">Any</option>
-            <option value="5">5+</option>
-            <option value="10">10+</option>
-            <option value="15">15+</option>
-            <option value="20" selected>20+</option>
-            <option value="25">25+</option>
-            <option value="30">30+</option>
-          </select>
-        </div>
-      </div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
-        <div style="font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;width:100%;margin-bottom:-4px">Tier B</div>
-        <div class="filter-group">
-          <label>EV% &ge;</label>
-          <select id="p2-ev-b" onchange="buildPicks2Table(getFilteredForDisplay())">
-            <option value="-100">Any EV</option>
-            <option value="-10">-10%+</option>
-            <option value="-5">-5%+</option>
-            <option value="0">0%+</option>
-            <option value="5" selected>5%+</option>
-            <option value="10">10%+</option>
-            <option value="15">15%+</option>
-            <option value="20">20%+</option>
-            <option value="25">25%+</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label>Movement &ge;</label>
-          <select id="p2-mov-b" onchange="buildPicks2Table(getFilteredForDisplay())">
-            <option value="0">Any</option>
-            <option value="5">5+</option>
-            <option value="10" selected>10+</option>
-            <option value="15">15+</option>
-            <option value="20">20+</option>
-            <option value="25">25+</option>
-            <option value="30">30+</option>
-          </select>
-        </div>
-      </div>
-    </div>
+    <h2>Picks 2 <span style="font-size:13px;font-weight:400;color:var(--sub)">— click cells to select criteria &middot; 1 unit = $100 risked</span></h2>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:12px">Click any cell to toggle it as pick criteria. Multiple selections combine with OR. Selections are saved between sessions.</p>
+    <div id="picks2-grid"></div>
     <div id="picks2-summary"></div>
     <div id="picks2-content" style="margin-top:24px"></div>
   </div>
@@ -1378,21 +1319,50 @@ function isPick(r){
   return absMov>19.5;
 }
 
-// Picks 2: Tier A = mov≥25 any EV; Tier B = mov 20-24 EV≥5%
+// ── Picks 2 grid state ────────────────────────────────────────────────────────
+const _P2_EV_ROWS=[
+  {label:'Any EV',   val:-100},
+  {label:'EV ≥ 0%',  val:0},
+  {label:'EV ≥ 5%',  val:5},
+  {label:'EV ≥ 10%', val:10},
+  {label:'EV ≥ 15%', val:15},
+  {label:'EV ≥ 20%', val:20},
+  {label:'EV ≥ 25%', val:25},
+];
+const _P2_MOV_COLS=[
+  {label:'mov ≥5',  val:5},
+  {label:'mov ≥10', val:10},
+  {label:'mov ≥15', val:15},
+  {label:'mov ≥20', val:20},
+  {label:'mov ≥25', val:25},
+  {label:'mov ≥30', val:30},
+];
+let _p2Selected=(()=>{
+  try{
+    const s=localStorage.getItem('p2_selections');
+    return s?new Set(JSON.parse(s)):new Set(['0|20','5|10']);
+  }catch(e){return new Set(['0|20','5|10']);}
+})();
+function _saveP2(){try{localStorage.setItem('p2_selections',JSON.stringify([..._p2Selected]));}catch(e){}}
+function toggleP2Cell(evVal,movVal){
+  const k=evVal+'|'+movVal;
+  _p2Selected.has(k)?_p2Selected.delete(k):_p2Selected.add(k);
+  _saveP2();
+  buildPicks2Table(getFilteredForDisplay());
+}
+
 function isPick2(r){
   if(isHardcodedPick(r)) return true;
   if(isManualPick(r)) return true;
   if(r.movFavor!==true) return false;
   const o=r.lastOdds!==null&&r.lastOdds!==undefined?r.lastOdds:r.firstOdds;
   if(o!==null&&o!==undefined&&o<=-200) return false;
+  if(!_p2Selected.size) return false;
   const absMov=r.movement!==null?Math.abs(r.movement):0;
-  const evA=parseFloat(document.getElementById('p2-ev-a').value);
-  const movA=parseFloat(document.getElementById('p2-mov-a').value);
-  const evB=parseFloat(document.getElementById('p2-ev-b').value);
-  const movB=parseFloat(document.getElementById('p2-mov-b').value);
-  const tierA=r.ev!==null && r.ev>=evA && absMov>=movA;
-  const tierB=r.ev!==null && r.ev>=evB && absMov>=movB;
-  return tierA || tierB;
+  return [..._p2Selected].some(k=>{
+    const [evT,movT]=k.split('|').map(Number);
+    return r.ev!==null && r.ev>=evT && absMov>=movT;
+  });
 }
 
 function isPotentialPick(r){
@@ -1512,13 +1482,43 @@ function buildUnitsTable(base){
   ], base, 'p1');
 }
 function buildPicks2Table(base){
-  const evA=document.getElementById('p2-ev-a').value;
-  const movA=document.getElementById('p2-mov-a').value;
-  const evB=document.getElementById('p2-ev-b').value;
-  const movB=document.getElementById('p2-mov-b').value;
-  const fmtEv=v=>v==='-100'?'Any EV':`EV\u2265${parseFloat(v)>=0?'+':''}${v}%`;
-  const fmtMov=v=>v==='0'?'any mov':`mov\u2265${v}`;
-  const desc=`Tier A: ${fmtEv(evA)} & ${fmtMov(movA)}  \u00b7  Tier B: ${fmtEv(evB)} & ${fmtMov(movB)}`;
+  const allGraded=RAW.filter(r=>r.result==='Win'||r.result==='Loss');
+  const thS='padding:6px 10px;text-align:center;color:var(--sub);font-size:11px;white-space:nowrap;font-weight:600;';
+  let html='<div style="overflow-x:auto;margin-bottom:16px"><table style="border-collapse:separate;border-spacing:3px;">';
+  html+=`<thead><tr><th style="${thS};text-align:left;color:var(--sub)"></th>`;
+  _P2_MOV_COLS.forEach(c=>{html+=`<th style="${thS}">${c.label}</th>`;});
+  html+='</tr></thead><tbody>';
+  _P2_EV_ROWS.forEach(row=>{
+    html+=`<tr><td style="padding:6px 10px;font-weight:600;color:var(--sub);white-space:nowrap;font-size:12px">${row.label}</td>`;
+    _P2_MOV_COLS.forEach(col=>{
+      const key=row.val+'|'+col.val;
+      const sel=_p2Selected.has(key);
+      const rows=allGraded.filter(r=>r.movFavor===true&&r.ev!==null&&r.ev>=row.val&&r.movement!==null&&Math.abs(r.movement)>=col.val);
+      const w=rows.filter(r=>r.result==='Win').length;
+      const n=rows.length;
+      const pct=n>0?w/n:null;
+      const rateStr=n>0?(pct*100).toFixed(0)+'%':'\u2014';
+      const rateColor=pct===null?'var(--sub)':pct>=0.55?'var(--accent)':pct>=0.45?'var(--warn)':'var(--red)';
+      const cellStyle=sel
+        ?'background:#0a2a0a;border:2px solid var(--accent);'
+        :'background:#1e2130;border:2px solid transparent;';
+      html+=`<td onclick="toggleP2Cell(${row.val},${col.val})"
+               style="${cellStyle}padding:9px 14px;text-align:center;border-radius:6px;cursor:pointer;min-width:70px;">
+               <div style="font-weight:700;color:${rateColor};font-size:13px">${rateStr}</div>
+               <div style="font-size:10px;color:var(--sub);margin-top:2px">n=${n}</div>
+             </td>`;
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  if(_p2Selected.size){
+    const labels=[..._p2Selected].map(k=>{const[e,m]=k.split('|');return `<span style="color:var(--accent)">${e==='-100'?'Any EV':'EV\u2265'+(parseFloat(e)>=0?'+':'')+e+'%'} &amp; mov\u2265${m}</span>`;});
+    html+=`<p style="font-size:12px;color:var(--sub);margin-bottom:14px">Selected: ${labels.join(' <span style="color:var(--border)">|</span> ')}</p>`;
+  } else {
+    html+=`<p style="font-size:12px;color:var(--warn);margin-bottom:14px">No criteria selected \u2014 click a cell above.</p>`;
+  }
+  document.getElementById('picks2-grid').innerHTML=html;
+  const desc=_p2Selected.size?[..._p2Selected].map(k=>{const[e,m]=k.split('|');return `${e==='-100'?'Any EV':'EV\u2265'+e+'%'}&mov\u2265${m}`;}).join(' OR '):'none';
   _buildPicksTab('picks2-summary','picks2-content',[
     {label:'1 Unit',desc,units:1,fn:r=>isPick2(r)}
   ], base, 'p2');
