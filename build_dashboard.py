@@ -1321,13 +1321,18 @@ function isPick(r){
 
 // ── Picks 2 grid state ────────────────────────────────────────────────────────
 const _P2_EV_ROWS=[
-  {label:'Any EV',   val:-100},
-  {label:'EV ≥ 0%',  val:0},
-  {label:'EV ≥ 5%',  val:5},
-  {label:'EV ≥ 10%', val:10},
-  {label:'EV ≥ 15%', val:15},
-  {label:'EV ≥ 20%', val:20},
-  {label:'EV ≥ 25%', val:25},
+  {label:'Any EV',    val:-100},
+  {label:'EV ≥ -25%', val:-25},
+  {label:'EV ≥ -20%', val:-20},
+  {label:'EV ≥ -15%', val:-15},
+  {label:'EV ≥ -10%', val:-10},
+  {label:'EV ≥ -5%',  val:-5},
+  {label:'EV ≥ 0%',   val:0},
+  {label:'EV ≥ 5%',   val:5},
+  {label:'EV ≥ 10%',  val:10},
+  {label:'EV ≥ 15%',  val:15},
+  {label:'EV ≥ 20%',  val:20},
+  {label:'EV ≥ 25%',  val:25},
 ];
 const _P2_MOV_COLS=[
   {label:'mov ≥5',  val:5},
