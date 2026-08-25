@@ -506,19 +506,72 @@ def open_panel(page, cell):
 
 # ── frozen column (player info) ───────────────────────────────────────────────
 
+_frozen_warn_logged = False
+
+def _looks_like_player(s):
+    """Return True if s looks like a pitcher name, not a date/time."""
+    if not s or len(s) < 3:
+        return False
+    # Reject "8/25", "8/25\n10:40 PM", "10:40 PM", pure numbers
+    if re.match(r'^\d{1,2}[/:]', s):
+        return False
+    if re.match(r'^\d+$', s):
+        return False
+    # Must contain at least two consecutive letters (e.g. a name)
+    return bool(re.search(r'[A-Za-z]{2,}', s))
+
 def extract_frozen_info(page, row_id):
+    global _frozen_warn_logged
     player, matchup = "N/A", "N/A"
     try:
         frozen = page.query_selector(f".ag-pinned-left-cols-container [row-id='{row_id}']")
         if not frozen:
             return player, matchup
         cells = frozen.query_selector_all(".ag-cell")
-        if len(cells) > 1:
+
+        # Try cells in order: [1, 2, 0] — Unabated may have added/shifted a column
+        for idx in (1, 2, 0):
+            if idx >= len(cells):
+                continue
+            cell = cells[idx]
             try:
-                player  = cells[1].query_selector("div[style*='font-size: 0.9rem']").inner_text().strip()
-                matchup = cells[1].query_selector("div[style*='font-size: 0.65rem']").inner_text().strip().replace("\xa0", " ")
+                p_el = cell.query_selector("div[style*='font-size: 0.9rem']")
+                if not p_el:
+                    continue
+                candidate = p_el.inner_text().strip()
+                if not _looks_like_player(candidate):
+                    # Log once so we know what cell[1] actually contains
+                    if not _frozen_warn_logged and idx == 1:
+                        try:
+                            ihtml = cell.evaluate("el => el.innerHTML")
+                            print(f"  ⚠️  frozen cell[1] text {candidate!r} doesn't look like a name; "
+                                  f"innerHTML={ihtml[:300]!r}")
+                        except Exception:
+                            pass
+                        _frozen_warn_logged = True
+                    continue
+                player = candidate
+                m_el = cell.query_selector("div[style*='font-size: 0.65rem']")
+                if m_el:
+                    matchup = m_el.inner_text().strip().replace("\xa0", " ")
+                break
             except Exception:
-                pass
+                continue
+
+        # Last-resort: scan all cell text lines for anything name-like
+        if not _looks_like_player(player):
+            for cell in cells:
+                try:
+                    for line in cell.inner_text().strip().split('\n'):
+                        line = line.strip()
+                        if _looks_like_player(line) and len(line) > 4:
+                            player = line
+                            break
+                    if _looks_like_player(player):
+                        break
+                except Exception:
+                    continue
+
     except Exception:
         pass
     return player, matchup
