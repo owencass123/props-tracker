@@ -68,7 +68,8 @@ TODAY = datetime.now(_CT).strftime("%m/%d/%Y")
 
 _PW = None
 _SCRAPE_DEADLINE = None
-SCRAPE_LIMIT_MINS = 50  # bail out and save partial results after this many minutes
+SCRAPE_LIMIT_MINS = 50
+_empty_cell_logged = 0
 
 
 # ── column ID auto-detection ──────────────────────────────────────────────────
@@ -533,8 +534,17 @@ def cell_has_data(cell):
 
 
 def process_cell(page, cell, player, matchup, book, rows_out):
+    global _empty_cell_logged
     if not cell_has_data(cell):
-        print(f"  ⏭️  {book}: empty cell, skipping")
+        if _empty_cell_logged < 5:
+            try:
+                inner = cell.evaluate("el => el.innerHTML")
+                print(f"  ⏭️  {book}: empty cell (innerHTML: {inner[:300]!r})")
+            except Exception:
+                print(f"  ⏭️  {book}: empty cell, skipping")
+            _empty_cell_logged += 1
+        else:
+            print(f"  ⏭️  {book}: empty cell, skipping")
         return
 
     ev_over, ev_under = extract_ev(cell)
@@ -812,6 +822,21 @@ def main():
         time.sleep(3)
         click_simulate(page)
         page.wait_for_selector(".ag-center-cols-container .ag-row", timeout=20000)
+        print(f"  Current URL: {page.url}")
+        page.screenshot(path="/tmp/after_simulate.png")
+        print("  📸 Screenshot saved: /tmp/after_simulate.png")
+        try:
+            first_row = page.query_selector(".ag-center-cols-container .ag-row")
+            if first_row:
+                cells = first_row.query_selector_all(".ag-cell")
+                print(f"  🔎 First row: {len(cells)} cells")
+                for c in cells[:6]:
+                    col_id = c.get_attribute("col-id")
+                    txt = c.inner_text().strip()[:80]
+                    ihtml = c.evaluate("el => el.innerHTML")[:150]
+                    print(f"     col-id={col_id!r} text={txt!r} html={ihtml!r}")
+        except Exception as diag_err:
+            print(f"  ⚠️  Cell diagnosis failed: {diag_err}")
         detect_col_ids(page)
         scroll_and_process_all_rows(page, rows_out)
     except Exception as e:
