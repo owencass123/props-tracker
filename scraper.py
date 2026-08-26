@@ -706,6 +706,8 @@ def scroll_and_process_all_rows(page, rows_out):
                 continue
 
             new_found = True
+            pitcher_num = len(seen)
+            print(f"🔄 [{pitcher_num}] Processing {player}…")
             process_row(page, row_id, rows_out)
 
         if not new_found:
@@ -729,15 +731,15 @@ def load_finalized_keys():
         import pandas as pd
         df = pd.read_csv(DATA_FILE, dtype=str)
         final_results = {"win", "loss", "push"}
+        mask = pd.Series([False] * len(df))
         for col in ("Over Result", "Under Result"):
-            if col not in df.columns:
-                continue
-            mask = df[col].str.strip().str.lower().isin(final_results)
-            for _, row in df[mask].iterrows():
-                player = str(row.get("Player", "")).strip().lower()
-                date   = str(row.get("Date", "")).strip()
-                if player and date:
-                    finalized.add((player, date))
+            if col in df.columns:
+                mask = mask | df[col].str.strip().str.lower().isin(final_results)
+        if mask.any():
+            sub = df[mask][["Player", "Date"]].dropna()
+            finalized = set(
+                zip(sub["Player"].str.strip().str.lower(), sub["Date"].str.strip())
+            )
     except Exception as e:
         print(f"⚠️  Could not load finalized keys: {e}")
     return finalized
