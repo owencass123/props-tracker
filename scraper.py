@@ -708,6 +708,8 @@ def scroll_and_process_all_rows(page, rows_out):
             player_lower = player.strip().lower()
             if not player_lower or player_lower == "n/a":
                 continue  # panel/header rows — not real player rows
+            if "(p)" not in player_lower:
+                continue  # skip non-pitcher rows (batters, etc.)
             if (player_lower, TODAY) in finalized:
                 print(f"  ⏭️  {player} — already finalized for {TODAY}, skipping")
                 continue
