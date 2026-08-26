@@ -249,12 +249,15 @@ def select_pitcher_strikeouts(page):
             print("✅ Pitcher Strikeouts already selected")
             return True
 
-        # Open the dropdown
+        # Open the dropdown and wait for it to show
         toggle.click()
-        time.sleep(0.5)
+        try:
+            page.wait_for_selector(".dropdown-menu.show button[role='menuitem']", timeout=3000)
+        except PWTimeout:
+            pass
 
-        # Click the Pitcher Strikeouts menu item
-        items = page.query_selector_all("button[role='menuitem'].dropdown-item")
+        # Click the Pitcher Strikeouts menu item from the open dropdown
+        items = page.query_selector_all(".dropdown-menu.show button[role='menuitem']")
         for item in items:
             if item.inner_text().strip().startswith("Pitcher Strikeouts"):
                 item.click()
@@ -273,7 +276,7 @@ def click_simulate(page):
     try:
         # Target the main Simulate button specifically — it has a title attribute.
         # Row-level btn-success buttons don't, so this avoids the strict-mode error.
-        btn = page.locator("a[title*='Simulate'][class*='btn-success']")
+        btn = page.locator("a[title*='Simulate All Pitcher Strikeouts']")
         btn.wait_for(state="visible", timeout=15000)
         btn.evaluate("(el) => el.click()")
         time.sleep(2)
