@@ -298,13 +298,20 @@ def normalize_time(s):
 def normalize_date(s):
     if not s:
         return ""
+    # Full date with year: "8/26/2026" or "8/26/26"
     m = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b", s)
-    if not m:
-        return ""
-    mm, dd = int(m.group(1)), int(m.group(2))
-    yy = m.group(3)
-    year = (2000 + int(yy)) if len(yy) == 2 and int(yy) <= 69 else (1900 + int(yy)) if len(yy) == 2 else int(yy)
-    return f"{mm:02d}/{dd:02d}/{year:04d}"
+    if m:
+        mm, dd = int(m.group(1)), int(m.group(2))
+        yy = m.group(3)
+        year = (2000 + int(yy)) if len(yy) == 2 and int(yy) <= 69 else (1900 + int(yy)) if len(yy) == 2 else int(yy)
+        return f"{mm:02d}/{dd:02d}/{year:04d}"
+    # Date without year: "8/26" — assume current CT year
+    m = re.search(r"\b(\d{1,2})/(\d{1,2})\b", s)
+    if m:
+        mm, dd = int(m.group(1)), int(m.group(2))
+        year = datetime.now(_CT).year
+        return f"{mm:02d}/{dd:02d}/{year:04d}"
+    return ""
 
 
 # ── grid scroll helpers ───────────────────────────────────────────────────────
