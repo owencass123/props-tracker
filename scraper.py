@@ -859,8 +859,9 @@ def main():
         time.sleep(3)
         _dismiss_modals(page)
 
+        # Wait for the grid container to exist in DOM (it may be hidden until Simulate is clicked)
         try:
-            page.wait_for_selector(".ag-center-cols-container", timeout=60000)
+            page.wait_for_selector(".ag-center-cols-container", state="attached", timeout=60000)
         except PWTimeout:
             page.screenshot(path="/tmp/props_page.png", full_page=True)
             print(f"  Current URL: {page.url}")
@@ -874,7 +875,7 @@ def main():
             print(f"  Page text: {leaf_text}")
             raise
 
-        time.sleep(3)
+        time.sleep(2)
         click_simulate(page)
         page.wait_for_selector(".ag-center-cols-container .ag-row", timeout=20000)
         print(f"  Current URL: {page.url}")
