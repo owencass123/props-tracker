@@ -238,6 +238,42 @@ def login(page):
 
 # ── simulate button ───────────────────────────────────────────────────────────
 
+def select_pitcher_strikeouts(page):
+    """Select Pitcher Strikeouts from the prop type dropdown before simulating."""
+    targets = ["Pitcher Strikeouts", "Strikeouts", "Pitcher K"]
+    for text in targets:
+        try:
+            # Try exact text match first, then partial
+            for exact in (True, False):
+                locator = page.get_by_text(text, exact=exact)
+                if locator.count() > 0:
+                    el = locator.first
+                    if el.is_visible():
+                        el.click()
+                        time.sleep(1)
+                        print(f"✅ Selected prop type: {text!r}")
+                        return True
+        except Exception:
+            continue
+
+    # Fallback: look for a <select> whose options include "strikeout"
+    try:
+        selects = page.query_selector_all("select")
+        for sel in selects:
+            opts = sel.query_selector_all("option")
+            for opt in opts:
+                if "strikeout" in (opt.inner_text() or "").lower():
+                    sel.select_option(label=opt.inner_text().strip())
+                    time.sleep(1)
+                    print(f"✅ Selected strikeout option via <select>: {opt.inner_text().strip()!r}")
+                    return True
+    except Exception:
+        pass
+
+    print("⚠️  Could not find Pitcher Strikeouts dropdown — proceeding with current selection")
+    return False
+
+
 def click_simulate(page):
     try:
         # Target the main Simulate button specifically — it has a title attribute.
@@ -885,6 +921,7 @@ def main():
             raise
 
         time.sleep(2)
+        select_pitcher_strikeouts(page)
         click_simulate(page)
         page.wait_for_selector(".ag-center-cols-container .ag-row", timeout=20000)
         print(f"  Current URL: {page.url}")
