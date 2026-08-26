@@ -240,38 +240,33 @@ def login(page):
 
 def select_pitcher_strikeouts(page):
     """Select Pitcher Strikeouts from the prop type dropdown before simulating."""
-    targets = ["Pitcher Strikeouts", "Strikeouts", "Pitcher K"]
-    for text in targets:
-        try:
-            # Try exact text match first, then partial
-            for exact in (True, False):
-                locator = page.get_by_text(text, exact=exact)
-                if locator.count() > 0:
-                    el = locator.first
-                    if el.is_visible():
-                        el.click()
-                        time.sleep(1)
-                        print(f"✅ Selected prop type: {text!r}")
-                        return True
-        except Exception:
-            continue
-
-    # Fallback: look for a <select> whose options include "strikeout"
     try:
-        selects = page.query_selector_all("select")
-        for sel in selects:
-            opts = sel.query_selector_all("option")
-            for opt in opts:
-                if "strikeout" in (opt.inner_text() or "").lower():
-                    sel.select_option(label=opt.inner_text().strip())
-                    time.sleep(1)
-                    print(f"✅ Selected strikeout option via <select>: {opt.inner_text().strip()!r}")
-                    return True
-    except Exception:
-        pass
+        toggle = page.locator("button.btn-falcon-primary.dropdown-toggle").first
+        toggle.wait_for(state="visible", timeout=8000)
 
-    print("⚠️  Could not find Pitcher Strikeouts dropdown — proceeding with current selection")
-    return False
+        # If already showing Pitcher Strikeouts, nothing to do
+        if "Pitcher Strikeouts" in (toggle.inner_text() or ""):
+            print("✅ Pitcher Strikeouts already selected")
+            return True
+
+        # Open the dropdown
+        toggle.click()
+        time.sleep(0.5)
+
+        # Click the Pitcher Strikeouts menu item
+        items = page.query_selector_all("button[role='menuitem'].dropdown-item")
+        for item in items:
+            if item.inner_text().strip().startswith("Pitcher Strikeouts"):
+                item.click()
+                time.sleep(1)
+                print("✅ Selected Pitcher Strikeouts from dropdown")
+                return True
+
+        print("⚠️  Pitcher Strikeouts option not found in dropdown menu")
+        return False
+    except Exception as e:
+        print(f"⚠️  Could not select Pitcher Strikeouts: {e}")
+        return False
 
 
 def click_simulate(page):
