@@ -513,16 +513,16 @@ def extract_panel_history(panel):
 # ── EV% extraction ────────────────────────────────────────────────────────────
 
 def extract_ev(cell):
-    spans = cell.query_selector_all("xpath=.//span[contains(text(), '%')]")
-    vals = []
-    for sp in spans:
-        t = sp.inner_text().strip().replace("−", "-")
-        m = re.search(r"[+-]?\d+(?:\.\d+)?\s*%", t)
-        if m:
+    try:
+        text = cell.inner_text().strip().replace("−", "-").replace("−", "-")
+        vals = []
+        for m in re.finditer(r"[+-]?\d+(?:\.\d+)?\s*%", text):
             v = m.group(0).replace(" ", "")
             if v not in vals:
                 vals.append(v)
-    return vals[0] if len(vals) > 0 else "", vals[1] if len(vals) > 1 else ""
+        return vals[0] if vals else "", vals[1] if len(vals) > 1 else ""
+    except Exception:
+        return "", ""
 
 
 def open_panel(page, cell):
