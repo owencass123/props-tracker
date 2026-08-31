@@ -657,6 +657,11 @@ def process_cell(page, cell, player, matchup, book, rows_out):
         print(f"  ⚠️  {book}: empty panel")
         return
 
+    _ts_logged = getattr(process_cell, '_ts_logged', False)
+    if not _ts_logged and history:
+        print(f"  🕐 Panel ts sample: {[h[0] for h in history[:3]]!r}")
+        process_cell._ts_logged = True
+
     for (ts, ov_line, ov_odds, un_line, un_odds) in history:
         def fmt_line(val, prefix):
             if val is None:
@@ -665,6 +670,8 @@ def process_cell(page, cell, player, matchup, book, rows_out):
             return prefix + s
 
         panel_date = normalize_date(ts)
+        if not panel_date:
+            panel_date = TODAY  # timestamp has no date (just a time) — assume today
         if panel_date != TODAY:
             continue
 
