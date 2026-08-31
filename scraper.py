@@ -239,36 +239,43 @@ def login(page):
 # ── simulate button ───────────────────────────────────────────────────────────
 
 def select_pitcher_strikeouts(page):
-    """Select Pitcher Strikeouts from the prop type dropdown before simulating."""
+    """Ensure Pitcher Strikeouts is selected via Bet Types → Pitcher Strikeouts."""
     try:
-        toggle = page.locator("button.btn-falcon-primary.dropdown-toggle").first
-        toggle.wait_for(state="visible", timeout=8000)
+        # If page already shows Pitcher Strikeouts as active, nothing to do
+        if page.locator("text='Pitcher Strikeouts'").count() > 0:
+            try:
+                el = page.locator("text='Pitcher Strikeouts'").first
+                if el.is_visible():
+                    print("✅ Pitcher Strikeouts already selected")
+                    return True
+            except Exception:
+                pass
 
-        # If already showing Pitcher Strikeouts, nothing to do
-        if "Pitcher Strikeouts" in (toggle.inner_text() or ""):
-            print("✅ Pitcher Strikeouts already selected")
-            return True
-
-        # Open the dropdown and wait for it to show
-        toggle.click()
+        # Step 1: open the "Bet Types" dropdown
         try:
-            page.wait_for_selector(".dropdown-menu.show button[role='menuitem']", timeout=3000)
-        except PWTimeout:
-            pass
+            bet_types = page.get_by_text("Bet Types", exact=False).first
+            bet_types.wait_for(state="visible", timeout=5000)
+            bet_types.click()
+            time.sleep(0.5)
+            print("✅ Opened Bet Types dropdown")
+        except Exception as e:
+            print(f"⚠️  Could not open Bet Types dropdown: {e}")
+            return False
 
-        # Click the Pitcher Strikeouts menu item from the open dropdown
-        items = page.query_selector_all(".dropdown-menu.show button[role='menuitem']")
-        for item in items:
-            if item.inner_text().strip().startswith("Pitcher Strikeouts"):
-                item.click()
-                time.sleep(1)
-                print("✅ Selected Pitcher Strikeouts from dropdown")
-                return True
+        # Step 2: click Pitcher Strikeouts inside the opened dropdown
+        try:
+            ps = page.get_by_text("Pitcher Strikeouts", exact=True).first
+            ps.wait_for(state="visible", timeout=3000)
+            ps.click()
+            time.sleep(1)
+            print("✅ Selected Pitcher Strikeouts")
+            return True
+        except Exception as e:
+            print(f"⚠️  Could not click Pitcher Strikeouts: {e}")
+            return False
 
-        print("⚠️  Pitcher Strikeouts option not found in dropdown menu")
-        return False
     except Exception as e:
-        print(f"⚠️  Could not select Pitcher Strikeouts: {e}")
+        print(f"⚠️  select_pitcher_strikeouts failed: {e}")
         return False
 
 
