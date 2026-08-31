@@ -606,6 +606,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <!-- By Player -->
   <div id="tab-player" class="tab-panel section">
     <h2>By Player</h2>
+    <input id="player-search" type="text" placeholder="Search player name…"
+      oninput="filterPlayerSearch()"
+      style="width:100%;max-width:360px;padding:7px 12px;margin-bottom:16px;border-radius:6px;
+             border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px;box-sizing:border-box">
     <div id="player-content"></div>
   </div>
 
@@ -1897,6 +1901,13 @@ function refresh(){
   buildPicks2Table(display);
   buildPotentialTable(display);
   buildRawTable(display);
+}
+
+function filterPlayerSearch(){
+  const q=(document.getElementById('player-search').value||'').trim().toLowerCase();
+  const base=getFilteredForDisplay();
+  const filtered=q?base.filter(r=>r.player&&r.player.toLowerCase().includes(q)):base;
+  buildPlayerTable(filtered);
 }
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
