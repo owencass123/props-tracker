@@ -571,6 +571,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <button class="tab" onclick="showTab('line')">By Line</button>
     <button class="tab" onclick="showTab('picks')">Picks</button>
     <button class="tab" onclick="showTab('picks2')">Picks 2</button>
+    <button class="tab" onclick="showTab('picks3')">Picks 3</button>
     <button class="tab" onclick="showTab('potential')">Potential Picks</button>
     <button class="tab" onclick="showTab('raw')">Raw Data</button>
   </div>
@@ -678,6 +679,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="picks2-grid"></div>
     <div id="picks2-summary"></div>
     <div id="picks2-content" style="margin-top:24px"></div>
+  </div>
+
+  <!-- Picks 3 -->
+  <div id="tab-picks3" class="tab-panel section">
+    <h2>Picks 3 <span style="font-size:13px;font-weight:400;color:var(--sub)">— multi-criteria picks &middot; 1 unit = $100 risked</span></h2>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:12px">
+      Moved 15+ &amp; EV ≥15% &nbsp;·&nbsp; Moved 20+ &amp; EV ≥5% &nbsp;·&nbsp; Moved 30+ any EV &nbsp;·&nbsp; Moved 25+ any negative EV
+    </p>
+    <div id="picks3-summary"></div>
+    <div id="picks3-content" style="margin-top:24px"></div>
   </div>
 
   <!-- Potential Picks -->
@@ -1392,6 +1403,7 @@ function refreshPicks(){
   const display = getFilteredForDisplay();
   buildUnitsTable(display);
   buildPicks2Table(display);
+  buildPicks3Table(display);
   buildPotentialTable(display);
 }
 
@@ -1543,6 +1555,26 @@ function buildPicks2Table(base){
   _buildPicksTab('picks2-summary','picks2-content',[
     {label:'1 Unit',desc,units:1,fn:r=>isPick2(r)}
   ], base, 'p2');
+}
+
+function isPick3(r){
+  if(isHardcodedPick(r)) return true;
+  if(isManualPick(r)) return true;
+  if(r.movFavor!==true) return false;
+  const o=r.lastOdds!==null&&r.lastOdds!==undefined?r.lastOdds:r.firstOdds;
+  if(o!==null&&o!==undefined&&o<=-200) return false;
+  const absMov=r.movement!==null?Math.abs(r.movement):0;
+  const ev=r.ev;
+  if(absMov>=15 && ev!==null && ev>=15) return true;
+  if(absMov>=20 && ev!==null && ev>=5) return true;
+  if(absMov>=30) return true;
+  if(absMov>=25 && ev!==null && ev<0) return true;
+  return false;
+}
+function buildPicks3Table(base){
+  _buildPicksTab('picks3-summary','picks3-content',[
+    {label:'1 Unit',desc:'Mov 15+ &amp; EV≥15% · Mov 20+ &amp; EV≥5% · Mov 30+ any EV · Mov 25+ neg EV',units:1,fn:r=>isPick3(r)}
+  ], base, 'p3');
 }
 
 function _buildPicksTab(summaryId, contentId, tiers, base, prefix){
@@ -1899,6 +1931,7 @@ function refresh(){
   buildPlayerTable(display);
   buildUnitsTable(display);
   buildPicks2Table(display);
+  buildPicks3Table(display);
   buildPotentialTable(display);
   buildRawTable(display);
 }
