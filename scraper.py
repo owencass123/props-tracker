@@ -276,7 +276,7 @@ def click_simulate(page):
     try:
         # Target the main Simulate button specifically — it has a title attribute.
         # Row-level btn-success buttons don't, so this avoids the strict-mode error.
-        btn = page.locator("a[title*='Simulate All Pitcher Strikeouts']")
+        btn = page.locator("a[title*='Simulate All Pitcher Strikeouts']").first
         btn.wait_for(state="visible", timeout=15000)
         btn.evaluate("(el) => el.click()")
         time.sleep(2)
