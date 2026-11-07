@@ -1,9 +1,9 @@
 name: Update Results Only
 
 on:
-  # 10 PM, 11 PM, midnight CT (CDT = UTC-5) = 03, 04, 05 UTC
-  schedule:
-    - cron: '0 3,4,5 * * *'
+  # Schedule disabled for MLB offseason — re-enable next season
+  # schedule:
+  #   - cron: '0 3,4,5 * * *'
   workflow_dispatch:
 
 permissions:
